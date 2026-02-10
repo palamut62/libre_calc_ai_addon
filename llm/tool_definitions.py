@@ -307,6 +307,91 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_all_formulas",
+            "description": "Sayfadaki tüm formülleri listeler. Her formülün adresi, içeriği, hesaplanan değeri ve bağımlı olduğu hücreleri gösterir.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Sayfa adı (boş bırakılırsa aktif sayfa)",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_spreadsheet_structure",
+            "description": "Tablonun formül yapısını ve veri akışını analiz eder. Giriş hücrelerini (veri), ara hesaplama hücrelerini ve çıkış hücrelerini (sonuç) tespit eder. Tablonun mantığını anlamak için kullanılır.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Sayfa adı (boş bırakılırsa aktif sayfa)",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_cell_details",
+            "description": "Bir hücrenin detaylı bilgilerini döndürür: değer, formül, yerel formül, tip, arka plan rengi, sayı formatı.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "address": {
+                        "type": "string",
+                        "description": "Hücre adresi (ör: A1, B5)",
+                    }
+                },
+                "required": ["address"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_cell_precedents",
+            "description": "Bir hücrenin formülünde referans verilen (bağımlı olduğu) hücreleri listeler.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "address": {
+                        "type": "string",
+                        "description": "Hücre adresi (ör: B5)",
+                    }
+                },
+                "required": ["address"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_cell_dependents",
+            "description": "Bu hücreye bağımlı olan (bu hücreyi kullanan) formül hücrelerini listeler.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "address": {
+                        "type": "string",
+                        "description": "Hücre adresi (ör: A1)",
+                    }
+                },
+                "required": ["address"],
+            },
+        },
+    },
 ]
 
 
@@ -345,6 +430,11 @@ class ToolDispatcher:
             "delete_rows": self._delete_rows,
             "delete_columns": self._delete_columns,
             "auto_fit_column": self._auto_fit_column,
+            "get_all_formulas": self._get_all_formulas,
+            "analyze_spreadsheet_structure": self._analyze_spreadsheet_structure,
+            "get_cell_details": self._get_cell_details,
+            "get_cell_precedents": self._get_cell_precedents,
+            "get_cell_dependents": self._get_cell_dependents,
         }
 
     def dispatch(self, tool_name: str, arguments: dict) -> str:
@@ -466,4 +556,26 @@ class ToolDispatcher:
     def _auto_fit_column(self, args: dict):
         """Sütun genişliğini otomatik ayarlar."""
         return self._cell_manipulator.auto_fit_column(args["col_letter"])
+
+    def _get_all_formulas(self, args: dict):
+        """Sayfadaki tüm formülleri listeler."""
+        sheet_name = args.get("sheet_name")
+        return self._cell_inspector.get_all_formulas(sheet_name)
+
+    def _analyze_spreadsheet_structure(self, args: dict):
+        """Tablonun yapısını analiz eder."""
+        sheet_name = args.get("sheet_name")
+        return self._cell_inspector.analyze_spreadsheet_structure(sheet_name)
+
+    def _get_cell_details(self, args: dict):
+        """Hücre detaylarını döndürür."""
+        return self._cell_inspector.get_cell_details(args["address"])
+
+    def _get_cell_precedents(self, args: dict):
+        """Hücrenin bağımlı olduğu hücreleri listeler."""
+        return self._cell_inspector.get_cell_precedents(args["address"])
+
+    def _get_cell_dependents(self, args: dict):
+        """Bu hücreye bağımlı olan hücreleri listeler."""
+        return self._cell_inspector.get_cell_dependents(args["address"])
 

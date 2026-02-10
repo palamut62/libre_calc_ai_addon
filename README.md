@@ -94,10 +94,37 @@ An intelligent, modern AI assistant sidebar for LibreOffice Calc, designed with 
 
 ## 💡 Usage
 
-The easiest way to run the assistant is using the included launcher script:
+### Option 1: Launch Both (Recommended for New Sessions)
 
 ```bash
-./launch.sh
+./launch.sh                    # Opens LibreOffice + Assistant
+./launch.sh my_spreadsheet.ods # Opens specific file + Assistant
+```
+
+### Option 2: Connect to Existing LibreOffice
+
+If you already have LibreOffice open, you need to restart it in **socket mode**:
+
+```bash
+# Step 1: Close your current LibreOffice
+# Step 2: Reopen it with socket listening enabled
+libreoffice --calc --accept="socket,host=localhost,port=2002;urp;" your_file.ods
+
+# Step 3: Run the assistant only
+./connect.sh
+```
+
+### Option 3: Add Socket Mode to LibreOffice Startup
+
+To always start LibreOffice with socket support, create an alias:
+
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+alias localc='libreoffice --calc --accept="socket,host=localhost,port=2002;urp;"'
+
+# Then use:
+localc my_file.ods
+./connect.sh
 ```
 
 Or search for "LibreCalc AI Assistant" in your application menu.
