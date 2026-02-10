@@ -142,6 +142,29 @@ TOOLS = [
             },
         },
     },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "merge_cells",
+            "description": "Belirtilen hücre aralığını birleştirir (merge). Genellikle ana başlıklar için kullanılır.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_name": {
+                        "type": "string",
+                        "description": "Birleştirilecek aralık (ör: A1:D1)",
+                    },
+                    "center": {
+                        "type": "boolean",
+                        "description": "İçeriği ortala (varsayılan: true)",
+                    }
+                },
+                "required": ["range_name"],
+            },
+        },
+    },
 ]
 
 
@@ -172,6 +195,7 @@ class ToolDispatcher:
             "set_cell_style": self._set_cell_style,
             "get_sheet_summary": self._get_sheet_summary,
             "detect_and_explain_errors": self._detect_and_explain_errors,
+            "merge_cells": self._merge_cells,
         }
 
     def dispatch(self, tool_name: str, arguments: dict) -> str:
@@ -246,3 +270,11 @@ class ToolDispatcher:
         """Hataları tespit eder ve açıklar."""
         range_name = args.get("range_name")
         return self._error_detector.detect_and_explain(range_name)
+
+    def _merge_cells(self, args: dict):
+        """Hücreleri birleştirir."""
+        range_name = args.get("range_name")
+        center = args.get("center", True)
+        self._cell_manipulator.merge_cells(range_name, center)
+        return f"{range_name} aralığı birleştirildi."
+

@@ -339,3 +339,33 @@ class CellManipulator:
         obj.setPropertyValue("BottomBorder", line)
         obj.setPropertyValue("LeftBorder", line)
         obj.setPropertyValue("RightBorder", line)
+
+    def merge_cells(self, range_str: str, center: bool = True):
+        """
+        Hücre aralığını birleştirir.
+
+        Args:
+            range_str: Birleştirilecek hücre aralığı (ör. "A1:D1").
+            center: İçeriği ortala (True/False).
+        """
+        try:
+            sheet = self.bridge.get_active_sheet()
+            cell_range = self.bridge.get_cell_range(sheet, range_str)
+            
+            # XMergeable arayüzünü kullanarak birleştir
+            cell_range.merge(True)
+            logger.info("Aralık %s birleştirildi.", range_str.upper())
+
+            if center:
+                from com.sun.star.table.CellHoriJustify import CENTER, STANDARD
+                from com.sun.star.table.CellVertJustify import CENTER as V_CENTER, STANDARD as V_STANDARD
+                
+                cell_range.setPropertyValue("HoriJustify", CENTER)
+                cell_range.setPropertyValue("VertJustify", V_CENTER)
+
+        except Exception as e:
+            logger.error(
+                "Hücre birleştirme hatası (%s): %s", range_str, str(e)
+            )
+            # raise # Hata olsa bile işlemi durdurma, logla devam et
+

@@ -17,9 +17,11 @@ from PyQt5.QtWidgets import (
     QSpinBox,
     QPushButton,
     QLabel,
+    QMessageBox,
 )
 
 from config.settings import Settings
+from llm.openrouter_provider import OpenRouterProvider
 
 
 class SettingsDialog(QDialog):
@@ -32,8 +34,8 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self._settings = Settings()
         self.setWindowTitle("Ayarlar")
-        self.setMinimumWidth(420)
-        self.setMinimumHeight(400)
+        self.setMinimumWidth(500)
+        self.setMinimumHeight(450)
         self._setup_ui()
         self._load_settings()
 
@@ -72,8 +74,11 @@ class SettingsDialog(QDialog):
         self._api_key_edit.setPlaceholderText("OpenRouter API anahtarinizi girin")
         api_form.addRow("API Anahtari:", self._api_key_edit)
 
+        # Model secimi
+        model_layout = QHBoxLayout()
         self._model_combo = QComboBox()
         self._model_combo.setEditable(True)
+        self._model_combo.setMinimumWidth(250)
         self._model_combo.addItems([
             "anthropic/claude-3.5-sonnet",
             "anthropic/claude-3-haiku",
@@ -81,7 +86,14 @@ class SettingsDialog(QDialog):
             "meta-llama/llama-3.1-70b-instruct",
             "mistralai/mistral-large-latest",
         ])
-        api_form.addRow("Model:", self._model_combo)
+        model_layout.addWidget(self._model_combo)
+
+        self._fetch_models_btn = QPushButton("Modelleri Getir")
+        self._fetch_models_btn.setToolTip("OpenRouter API'den guncel modelleri ceker")
+        self._fetch_models_btn.clicked.connect(self._fetch_models)
+        model_layout.addWidget(self._fetch_models_btn)
+
+        api_form.addRow("Model:", model_layout)
 
         api_group.setLayout(api_form)
         llm_layout.addWidget(api_group)
@@ -182,8 +194,14 @@ class SettingsDialog(QDialog):
         # Saglayici
         if s.provider == "ollama":
             self._radio_ollama.setChecked(True)
+            self._fetch_models_btn.setEnabled(False) # Ollama icin henuz destek yok
         else:
             self._radio_openrouter.setChecked(True)
+            self._fetch_models_btn.setEnabled(True)
+        
+        # Radyo butonlari degistiginde buton durumunu guncelle
+        self._radio_openrouter.toggled.connect(lambda: self._fetch_models_btn.setEnabled(True))
+        self._radio_ollama.toggled.connect(lambda: self._fetch_models_btn.setEnabled(False))
 
         # API
         self._api_key_edit.setText(s.openrouter_api_key)
@@ -213,6 +231,53 @@ class SettingsDialog(QDialog):
         lang_idx = self._lang_combo.findData(s.get("ui_language", "tr"))
         if lang_idx >= 0:
             self._lang_combo.setCurrentIndex(lang_idx)
+
+    def _fetch_models(self):
+        """OpenRouter API'den modelleri ceker."""
+        api_key = self._api_key_edit.text().strip()
+        if not api_key:
+            QMessageBox.warning(self, "Hata", "Lutfen once bir OpenRouter API anahtari girin.")
+            return
+
+        self._fetch_models_btn.setEnabled(False)
+        self._fetch_models_btn.setText("Cekiliyor...")
+        QApplication = self.parent().parent().parent() if self.parent() else None # Hacky way to process events, better to just let it hang for a sec or use thread
+        # Basitce senkron yapalim, thread'e gerek yok simdilik
+
+        try:
+            # Gecici provider olusturup modelleri cek
+            # Settings singleton oldugu icin API key'i gecici olarak set etmemiz lazim
+            old_key = self._settings.openrouter_api_key
+            self._settings.set("openrouter_api_key", api_key)
+            
+            provider = OpenRouterProvider()
+            models = provider.get_available_models()
+            
+            # API key'i eski haline getir (kaydetmeden degistirmeyelim)
+            self._settings.set("openrouter_api_key", old_key)
+            
+            if models:
+                current_text = self._model_combo.currentText()
+                self._model_combo.clear()
+                self._model_combo.addItems(sorted(models))
+                
+                # Eski secimi korumaya calis
+                idx = self._model_combo.findText(current_text)
+                if idx >= 0:
+                    self._model_combo.setCurrentIndex(idx)
+                else:
+                    self._model_combo.setCurrentText(current_text)
+                    
+                QMessageBox.information(self, "Basarili", f"{len(models)} model basariyla cekildi.")
+            else:
+                QMessageBox.warning(self, "Uyari", "Hicbir model bulunamadi.")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Modeller cekilirken hata olustu:\n{str(e)}")
+        
+        finally:
+            self._fetch_models_btn.setEnabled(True)
+            self._fetch_models_btn.setText("Modelleri Getir")
 
     def _save_and_accept(self):
         """Ayarlari kaydedip diyalogu kapatir."""
@@ -246,3 +311,4 @@ class SettingsDialog(QDialog):
 
         s.save()
         self.accept()
+
