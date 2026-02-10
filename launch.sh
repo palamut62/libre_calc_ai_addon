@@ -50,7 +50,7 @@ python main.py &
 AI_PID=$!
 
 echo ""
-echo "LibreCalc AI Asistanı hazır!"
+echo "Aras Asistan hazır!"
 echo "  LibreOffice PID: ${LO_PID:-zaten çalışıyor}"
 echo "  AI Asistanı PID: $AI_PID"
 echo ""

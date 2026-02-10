@@ -1,52 +1,66 @@
 """LibreOffice olay dinleyicisi - Secim degisikliklerini takip eder."""
 
 import logging
-import threading
-import uno
-import unohelper
-from com.sun.star.view import XSelectionChangeListener
-from com.sun.star.lang import EventObject
 from PyQt5.QtCore import QObject, pyqtSignal
 
 logger = logging.getLogger(__name__)
 
+# UNO modulleri sadece LibreOffice ortaminda mevcut
+try:
+    import uno
+    import unohelper
+    from com.sun.star.view import XSelectionChangeListener
+    from com.sun.star.lang import EventObject
+    UNO_AVAILABLE = True
+except ImportError:
+    UNO_AVAILABLE = False
+    unohelper = None
+    XSelectionChangeListener = None
+    EventObject = None
 
-class SelectionChangeHandler(unohelper.Base, XSelectionChangeListener):
-    """LibreOffice secim degisikliklerini dinleyen UNO sinifi."""
 
-    def __init__(self, callback):
-        """
-        Handler baslatici.
+# SelectionChangeHandler sadece UNO mevcutsa tanimlanir
+if UNO_AVAILABLE:
+    class SelectionChangeHandler(unohelper.Base, XSelectionChangeListener):
+        """LibreOffice secim degisikliklerini dinleyen UNO sinifi."""
 
-        Args:
-            callback: Secim degistiginde cagrilacak fonksiyon.
-        """
-        self.callback = callback
+        def __init__(self, callback):
+            """
+            Handler baslatici.
 
-    def selectionChanged(self, event: EventObject):
-        """
-        Secim degistiginde LibreOffice tarafindan cagrilir.
-        
-        Args:
-            event: Olay nesnesi.
-        """
-        try:
-            # Callback'i cagir (genellikle Bridge sinyalini tetikler)
-            self.callback(event)
-        except Exception as e:
-            logger.error("Selection change hatasi: %s", e)
+            Args:
+                callback: Secim degistiginde cagrilacak fonksiyon.
+            """
+            self.callback = callback
 
-    def disposing(self, event: EventObject):
-        """Dinlenen nesne yok oldugunda cagrilir."""
-        pass
+        def selectionChanged(self, event):
+            """
+            Secim degistiginde LibreOffice tarafindan cagrilir.
+
+            Args:
+                event: Olay nesnesi.
+            """
+            try:
+                self.callback(event)
+            except Exception as e:
+                logger.error("Selection change hatasi: %s", e)
+
+        def disposing(self, event):
+            """Dinlenen nesne yok oldugunda cagrilir."""
+            pass
+else:
+    # Dummy sinif - UNO yoksa kullanilir
+    class SelectionChangeHandler:
+        def __init__(self, callback):
+            self.callback = callback
 
 
 class LibreOfficeEventListener(QObject):
     """
     LibreOffice olaylarini dinler ve PyQt sinyallerine cevirir.
-    UI thread'i ile güvenli iletisim saglar.
+    UI thread'i ile guvenli iletisim saglar.
     """
-    
+
     # Secim degistiginde tetiklenir (controller nesnesi gonderilir)
     selection_changed = pyqtSignal(object)
 
@@ -65,21 +79,25 @@ class LibreOfficeEventListener(QObject):
 
     def start(self):
         """Dinlemeyi baslatir."""
+        if not UNO_AVAILABLE:
+            logger.warning("UNO modulu mevcut degil, listener baslatilmadi.")
+            return
+
         if self._listening:
             return
 
         try:
             doc = self._bridge.get_active_document()
             self._controller = doc.getCurrentController()
-            
+
             # Handler olustur
             self._handler = SelectionChangeHandler(self._on_selection_changed_uno)
-            
+
             # Listener'i kaydet
             self._controller.addSelectionChangeListener(self._handler)
             self._listening = True
             logger.info("Selection listener baslatildi.")
-            
+
         except Exception as e:
             logger.error("Listener baslatma hatasi: %s", e)
 

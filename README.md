@@ -3,30 +3,45 @@
 An intelligent, modern AI assistant sidebar for LibreOffice Calc, designed with the **Claude Code** aesthetic. This add-on allows you to chat with an AI utilizing data from your spreadsheets, analyze cells, and generate formulas, all within a sleek, professional interface.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.8%2B-blue)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![LibreOffice](https://img.shields.io/badge/LibreOffice-Calc-green)
 
 ## ✨ Features
 
-*   **Modern & Streamlined UI**: A clean interface focusing purely on the chat experience. Cluttered side panels have been removed, giving you more space.
-*   **Visual Designer Mode**: 🎨 The AI now understands aesthetics! It can apply:
-    *   **Borders & Grids**: Create professional-looking tables.
-    *   **Text Alignment**: Right-align numbers, center headers, and wrap text.
-    *   **Color Palettes**: Use harmonious background and font colors.
-*   **Live Selection Tracking**: The status bar instantly reflects your selection, whether it's a single cell (`A1`), a range (`A1:B5`), or multiple non-contiguous cells (`A1, C5`).
-*   **Deep Integration**: Connects directly to LibreOffice Calc via UNO.
-    *   Read/Write cell values & formulas.
-    *   Apply styles (Bold, Italic, Color, Font Size).
-    *   Analyze formulas and detect errors.
-*   **AI-Powered**: Supports multiple LLM providers (OpenRouter, Ollama) for intelligent assistance.
-*   **Smart Launcher**: Automatically handles connection to LibreOffice (supports both `apt` and `snap` installations).
+### Core Features
+*   **Modern & Streamlined UI**: A clean interface focusing purely on the chat experience.
+*   **Multi-Language Support**: Full Turkish and English interface support with instant language switching.
+*   **Theme Support**: Light, Dark, and System theme options.
+
+### AI Providers
+*   **OpenRouter (Cloud)**: Access to Claude, GPT, Gemini, Llama and 100+ models via API.
+*   **Ollama (Local)**: Run AI models locally for privacy and offline use.
+    *   Automatic model fetching from Ollama server
+    *   Tool support detection with visual warnings
+    *   Fallback mode for models without tool support
+
+### Spreadsheet Integration
+*   **Live Selection Tracking**: The status bar instantly reflects your selection (`A1`, `A1:B5`, or `A1, C5`).
+*   **Deep Integration via UNO**:
+    *   Read/Write cell values & formulas
+    *   Apply styles (Bold, Italic, Color, Font Size)
+    *   Cell merging and unmerging
+    *   Advanced borders and grid styles
+    *   Text alignment and wrapping
+    *   Analyze formulas and detect errors
+
+### Visual Designer Mode
+*   **Borders & Grids**: Create professional-looking tables
+*   **Text Alignment**: Right-align numbers, center headers, wrap text
+*   **Color Palettes**: Harmonious background and font colors
+*   **Cell Merging**: Combine cells for headers and labels
 
 ## 🚀 Installation
 
 ### Prerequisites
 
 *   Linux (Tested on Ubuntu/Debian based systems)
-*   Python 3.8+
+*   Python 3.10+
 *   LibreOffice Calc
 *   `python3-uno` package (Crucial for connection)
 
@@ -39,7 +54,7 @@ An intelligent, modern AI assistant sidebar for LibreOffice Calc, designed with 
     sudo apt install libreoffice python3-uno python3-venv
     ```
 
-    *> **Note:** If you are using the Snap version of LibreOffice, it is highly recommended to switch to the `apt` version for better compatibility with external Python scripts.*
+    > **Note:** If you are using the Snap version of LibreOffice, it is highly recommended to switch to the `apt` version for better compatibility with external Python scripts.
 
 2.  **Clone the Repository:**
 
@@ -53,57 +68,107 @@ An intelligent, modern AI assistant sidebar for LibreOffice Calc, designed with 
     ```bash
     # Create venv with access to system site-packages (needed for uno)
     python3 -m venv venv --system-site-packages
-    
+
     # Activate
     source venv/bin/activate
-    
+
     # Install dependencies
     pip install -r requirements.txt
     ```
 
 4.  **Configuration:**
 
-    Create a `.env` file in the root directory:
+    Create a `.env` file in the root directory (optional - can also configure via Settings UI):
 
     ```env
     # Options: openrouter, ollama
     LLM_PROVIDER=openrouter
-    
+
     # If using OpenRouter
     OPENROUTER_API_KEY=your_api_key_here
-    
-    # If using Ollama
+
+    # If using Ollama (local)
     OLLAMA_BASE_URL=http://localhost:11434
+    OLLAMA_DEFAULT_MODEL=llama3.2
     ```
 
 ## 💡 Usage
 
-The easiest way to run the assistant is using the included launcher script. It will automatically start LibreOffice in listening mode and launch the AI sidebar.
+The easiest way to run the assistant is using the included launcher script:
 
 ```bash
 ./launch.sh
 ```
 
-Or, if you installed the desktop shortcut, search for "LibreCalc AI Assistant" in your application menu.
+Or search for "LibreCalc AI Assistant" in your application menu.
+
+### Settings
+
+Access **File > Settings** to configure:
+
+| Tab | Options |
+|-----|---------|
+| **AI (LLM)** | Provider selection, API keys, model selection, Ollama URL |
+| **LibreOffice** | Connection host and port |
+| **General** | Theme (Light/Dark/System), Language (TR/EN/System) |
+
+### Ollama Setup
+
+1. Install Ollama: `curl -fsSL https://ollama.com/install.sh | sh`
+2. Pull a model: `ollama pull llama3.2`
+3. In Settings, select "Ollama (Local)" and click "Fetch Models"
+
+#### Tool-Supported Models
+
+For full functionality (cell editing, formula writing), use models with tool/function calling support:
+
+| Model | Tool Support |
+|-------|-------------|
+| `llama3.1`, `llama3.2`, `llama3.3` | ✅ Yes |
+| `qwen2.5`, `qwen2` | ✅ Yes |
+| `mistral` | ✅ Yes |
+| `command-r` | ✅ Yes |
+| `gemma3`, `phi3` | ❌ No (chat only) |
+
+> Models without tool support will show a warning in Settings and can only be used for chat conversations.
 
 ### Example Capabilities
 
 *   **Design**: "Create a monthly budget table with bold headers, blue background, and borders."
+*   **Merge Cells**: "Merge cells A1:D1 and center the title."
 *   **Formulas**: "Write a formula in C1 to sum A1 and B1."
 *   **Analysis**: "What does the formula in D5 do? Explain it simply."
 *   **Errors**: "Why is there a #DIV/0! error in column E?"
 
-## 🔧 How it Works
+## 🔧 Architecture
 
-The application uses the **UNO (Universal Network Objects)** bridge to communicate with a running LibreOffice instance.
-*   **`launch.sh`**: Sets up the environment (PYTHONPATH) and ensures LibreOffice is started.
-*   **`main.py`**: The entry point for the PyQt5 application.
-*   **`core/`**: Contains the logic for UNO communication, cell inspection, and manipulation.
+```
+libre_calc_ai_addon/
+├── main.py              # Application entry point
+├── launch.sh            # Smart launcher script
+├── config/
+│   └── settings.py      # Configuration management
+├── core/
+│   ├── cell_manipulator.py   # UNO cell operations
+│   └── event_listener.py     # Selection tracking
+├── llm/
+│   ├── base_provider.py      # Abstract LLM interface
+│   ├── openrouter_provider.py
+│   ├── ollama_provider.py    # Local Ollama support
+│   ├── tool_definitions.py   # Function calling schemas
+│   └── prompt_templates.py
+└── ui/
+    ├── main_window.py        # Main application window
+    ├── chat_widget.py        # Chat interface
+    ├── settings_dialog.py    # Settings UI
+    ├── styles.py             # Theme definitions
+    └── i18n.py               # Translations (TR/EN)
+```
 
-## Contributing
+## 🤝 Contributing
 
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
-## License
+## 📄 License
 
 [MIT](https://choosealicense.com/licenses/mit/)

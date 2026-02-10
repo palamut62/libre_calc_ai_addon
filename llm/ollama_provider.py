@@ -68,6 +68,12 @@ class OllamaProvider(BaseLLMProvider):
             ConnectionError: Ollama sunucusu çalışmıyorsa.
             RuntimeError: API hatası durumunda.
         """
+        return self._do_chat_completion(messages, tools)
+
+    def _do_chat_completion(
+        self, messages: list[dict], tools: list[dict] | None = None, retry_without_tools: bool = True
+    ) -> dict:
+        """İç chat completion metodu - tool fallback desteği ile."""
         payload = self._build_payload(messages, tools, stream=False)
 
         try:
@@ -84,6 +90,20 @@ class OllamaProvider(BaseLLMProvider):
             raise ConnectionError(
                 f"Ollama isteği zaman aşımına uğradı: {exc}"
             ) from exc
+
+        # Tool desteklenmiyor hatası - tool'suz tekrar dene
+        if response.status_code == 400 and tools and retry_without_tools:
+            try:
+                error_data = response.json()
+                error_msg = error_data.get("error", "")
+                if "does not support tools" in error_msg:
+                    logger.warning(
+                        "Model '%s' tool desteği yok, tool'suz devam ediliyor.",
+                        self._model
+                    )
+                    return self._do_chat_completion(messages, tools=None, retry_without_tools=False)
+            except (json.JSONDecodeError, KeyError):
+                pass
 
         if response.status_code != 200:
             raise RuntimeError(
@@ -115,6 +135,12 @@ class OllamaProvider(BaseLLMProvider):
         Yields:
             Her JSON satırı için sözlük.
         """
+        yield from self._do_stream_completion(messages, tools)
+
+    def _do_stream_completion(
+        self, messages: list[dict], tools: list[dict] | None = None, retry_without_tools: bool = True
+    ) -> Generator[dict, None, None]:
+        """İç stream completion metodu - tool fallback desteği ile."""
         payload = self._build_payload(messages, tools, stream=True)
 
         try:
@@ -123,6 +149,22 @@ class OllamaProvider(BaseLLMProvider):
                 f"{self._base_url}/api/chat",
                 json=payload,
             ) as response:
+                # Tool desteklenmiyor hatası - tool'suz tekrar dene
+                if response.status_code == 400 and tools and retry_without_tools:
+                    response.read()
+                    try:
+                        error_data = json.loads(response.text)
+                        error_msg = error_data.get("error", "")
+                        if "does not support tools" in error_msg:
+                            logger.warning(
+                                "Model '%s' tool desteği yok, tool'suz devam ediliyor.",
+                                self._model
+                            )
+                            yield from self._do_stream_completion(messages, tools=None, retry_without_tools=False)
+                            return
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+
                 if response.status_code != 200:
                     response.read()
                     raise RuntimeError(

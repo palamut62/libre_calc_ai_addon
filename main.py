@@ -86,8 +86,8 @@ def main():
 
     # Qt uygulamasını oluştur
     app = QApplication(sys.argv)
-    app.setApplicationName("LibreCalc AI Asistanı")
-    app.setOrganizationName("LibreCalcAI")
+    app.setApplicationName("Aras")
+    app.setOrganizationName("ArasAI")
 
     # Ana pencereyi oluştur ve göster
     window = MainWindow(skip_lo_connect=args.no_lo)

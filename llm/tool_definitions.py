@@ -142,8 +142,7 @@ TOOLS = [
             },
         },
     },
-        },
-    },
+
     {
         "type": "function",
         "function": {
@@ -162,6 +161,149 @@ TOOLS = [
                     }
                 },
                 "required": ["range_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_column_width",
+            "description": "Sütun genişliğini ayarlar.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "col_letter": {
+                        "type": "string",
+                        "description": "Sütun harfi (ör: A, B, AB)",
+                    },
+                    "width_mm": {
+                        "type": "number",
+                        "description": "Genişlik (milimetre cinsinden, ör: 30)",
+                    },
+                },
+                "required": ["col_letter", "width_mm"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_row_height",
+            "description": "Satır yüksekliğini ayarlar.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "row_num": {
+                        "type": "integer",
+                        "description": "Satır numarası (1 tabanlı)",
+                    },
+                    "height_mm": {
+                        "type": "number",
+                        "description": "Yükseklik (milimetre cinsinden, ör: 8)",
+                    },
+                },
+                "required": ["row_num", "height_mm"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "insert_rows",
+            "description": "Belirtilen konuma yeni satırlar ekler. Mevcut satırları aşağı kaydırır.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "row_num": {
+                        "type": "integer",
+                        "description": "Ekleme yapılacak satır numarası (1 tabanlı)",
+                    },
+                    "count": {
+                        "type": "integer",
+                        "description": "Eklenecek satır sayısı (varsayılan: 1)",
+                    },
+                },
+                "required": ["row_num"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "insert_columns",
+            "description": "Belirtilen konuma yeni sütunlar ekler. Mevcut sütunları sağa kaydırır.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "col_letter": {
+                        "type": "string",
+                        "description": "Ekleme yapılacak sütun harfi",
+                    },
+                    "count": {
+                        "type": "integer",
+                        "description": "Eklenecek sütun sayısı (varsayılan: 1)",
+                    },
+                },
+                "required": ["col_letter"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_rows",
+            "description": "Belirtilen satırları siler. DİKKAT: Bu işlem geri alınamaz!",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "row_num": {
+                        "type": "integer",
+                        "description": "Silinecek ilk satır numarası (1 tabanlı)",
+                    },
+                    "count": {
+                        "type": "integer",
+                        "description": "Silinecek satır sayısı (varsayılan: 1)",
+                    },
+                },
+                "required": ["row_num"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_columns",
+            "description": "Belirtilen sütunları siler. DİKKAT: Bu işlem geri alınamaz!",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "col_letter": {
+                        "type": "string",
+                        "description": "Silinecek ilk sütun harfi",
+                    },
+                    "count": {
+                        "type": "integer",
+                        "description": "Silinecek sütun sayısı (varsayılan: 1)",
+                    },
+                },
+                "required": ["col_letter"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "auto_fit_column",
+            "description": "Sütun genişliğini içeriğe göre otomatik ayarlar.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "col_letter": {
+                        "type": "string",
+                        "description": "Sütun harfi (ör: A, B)",
+                    },
+                },
+                "required": ["col_letter"],
             },
         },
     },
@@ -196,6 +338,13 @@ class ToolDispatcher:
             "get_sheet_summary": self._get_sheet_summary,
             "detect_and_explain_errors": self._detect_and_explain_errors,
             "merge_cells": self._merge_cells,
+            "set_column_width": self._set_column_width,
+            "set_row_height": self._set_row_height,
+            "insert_rows": self._insert_rows,
+            "insert_columns": self._insert_columns,
+            "delete_rows": self._delete_rows,
+            "delete_columns": self._delete_columns,
+            "auto_fit_column": self._auto_fit_column,
         }
 
     def dispatch(self, tool_name: str, arguments: dict) -> str:
@@ -277,4 +426,44 @@ class ToolDispatcher:
         center = args.get("center", True)
         self._cell_manipulator.merge_cells(range_name, center)
         return f"{range_name} aralığı birleştirildi."
+
+    def _set_column_width(self, args: dict):
+        """Sütun genişliğini ayarlar."""
+        return self._cell_manipulator.set_column_width(
+            args["col_letter"], args["width_mm"]
+        )
+
+    def _set_row_height(self, args: dict):
+        """Satır yüksekliğini ayarlar."""
+        return self._cell_manipulator.set_row_height(
+            args["row_num"], args["height_mm"]
+        )
+
+    def _insert_rows(self, args: dict):
+        """Satır ekler."""
+        return self._cell_manipulator.insert_rows(
+            args["row_num"], args.get("count", 1)
+        )
+
+    def _insert_columns(self, args: dict):
+        """Sütun ekler."""
+        return self._cell_manipulator.insert_columns(
+            args["col_letter"], args.get("count", 1)
+        )
+
+    def _delete_rows(self, args: dict):
+        """Satır siler."""
+        return self._cell_manipulator.delete_rows(
+            args["row_num"], args.get("count", 1)
+        )
+
+    def _delete_columns(self, args: dict):
+        """Sütun siler."""
+        return self._cell_manipulator.delete_columns(
+            args["col_letter"], args.get("count", 1)
+        )
+
+    def _auto_fit_column(self, args: dict):
+        """Sütun genişliğini otomatik ayarlar."""
+        return self._cell_manipulator.auto_fit_column(args["col_letter"])
 

@@ -351,7 +351,7 @@ class CellManipulator:
         try:
             sheet = self.bridge.get_active_sheet()
             cell_range = self.bridge.get_cell_range(sheet, range_str)
-            
+
             # XMergeable arayüzünü kullanarak birleştir
             cell_range.merge(True)
             logger.info("Aralık %s birleştirildi.", range_str.upper())
@@ -359,7 +359,7 @@ class CellManipulator:
             if center:
                 from com.sun.star.table.CellHoriJustify import CENTER, STANDARD
                 from com.sun.star.table.CellVertJustify import CENTER as V_CENTER, STANDARD as V_STANDARD
-                
+
                 cell_range.setPropertyValue("HoriJustify", CENTER)
                 cell_range.setPropertyValue("VertJustify", V_CENTER)
 
@@ -367,5 +367,195 @@ class CellManipulator:
             logger.error(
                 "Hücre birleştirme hatası (%s): %s", range_str, str(e)
             )
-            # raise # Hata olsa bile işlemi durdurma, logla devam et
+
+    def set_column_width(self, col_letter: str, width_mm: float):
+        """
+        Sütun genişliğini ayarlar.
+
+        Args:
+            col_letter: Sütun harfi (ör. "A", "B").
+            width_mm: Genişlik (milimetre cinsinden).
+
+        Returns:
+            Sonuç açıklaması.
+        """
+        try:
+            sheet = self.bridge.get_active_sheet()
+            columns = sheet.getColumns()
+            col_index = 0
+            for char in col_letter.upper():
+                col_index = col_index * 26 + (ord(char) - ord('A') + 1)
+            col_index -= 1
+
+            column = columns.getByIndex(col_index)
+            # Width: 1/100 mm cinsinden
+            column.setPropertyValue("Width", int(width_mm * 100))
+
+            logger.info("Sütun %s genişliği %s mm olarak ayarlandı.", col_letter.upper(), width_mm)
+            return f"Sütun {col_letter.upper()} genişliği {width_mm} mm olarak ayarlandı."
+
+        except Exception as e:
+            logger.error("Sütun genişlik hatası (%s): %s", col_letter, str(e))
+            raise
+
+    def set_row_height(self, row_num: int, height_mm: float):
+        """
+        Satır yüksekliğini ayarlar.
+
+        Args:
+            row_num: Satır numarası (1 tabanlı).
+            height_mm: Yükseklik (milimetre cinsinden).
+
+        Returns:
+            Sonuç açıklaması.
+        """
+        try:
+            sheet = self.bridge.get_active_sheet()
+            rows = sheet.getRows()
+            row_index = row_num - 1
+
+            row = rows.getByIndex(row_index)
+            # Height: 1/100 mm cinsinden
+            row.setPropertyValue("Height", int(height_mm * 100))
+
+            logger.info("Satır %d yüksekliği %s mm olarak ayarlandı.", row_num, height_mm)
+            return f"Satır {row_num} yüksekliği {height_mm} mm olarak ayarlandı."
+
+        except Exception as e:
+            logger.error("Satır yükseklik hatası (%d): %s", row_num, str(e))
+            raise
+
+    def insert_rows(self, row_num: int, count: int = 1):
+        """
+        Belirtilen konuma yeni satırlar ekler.
+
+        Args:
+            row_num: Ekleme yapılacak satır numarası (1 tabanlı).
+            count: Eklenecek satır sayısı.
+
+        Returns:
+            Sonuç açıklaması.
+        """
+        try:
+            sheet = self.bridge.get_active_sheet()
+            rows = sheet.getRows()
+            row_index = row_num - 1
+
+            rows.insertByIndex(row_index, count)
+
+            logger.info("%d satır, %d. satıra eklendi.", count, row_num)
+            return f"{count} satır, {row_num}. satıra eklendi."
+
+        except Exception as e:
+            logger.error("Satır ekleme hatası: %s", str(e))
+            raise
+
+    def insert_columns(self, col_letter: str, count: int = 1):
+        """
+        Belirtilen konuma yeni sütunlar ekler.
+
+        Args:
+            col_letter: Ekleme yapılacak sütun harfi.
+            count: Eklenecek sütun sayısı.
+
+        Returns:
+            Sonuç açıklaması.
+        """
+        try:
+            sheet = self.bridge.get_active_sheet()
+            columns = sheet.getColumns()
+            col_index = 0
+            for char in col_letter.upper():
+                col_index = col_index * 26 + (ord(char) - ord('A') + 1)
+            col_index -= 1
+
+            columns.insertByIndex(col_index, count)
+
+            logger.info("%d sütun, %s sütununa eklendi.", count, col_letter.upper())
+            return f"{count} sütun, {col_letter.upper()} sütununa eklendi."
+
+        except Exception as e:
+            logger.error("Sütun ekleme hatası: %s", str(e))
+            raise
+
+    def delete_rows(self, row_num: int, count: int = 1):
+        """
+        Belirtilen satırları siler.
+
+        Args:
+            row_num: Silinecek ilk satır numarası (1 tabanlı).
+            count: Silinecek satır sayısı.
+
+        Returns:
+            Sonuç açıklaması.
+        """
+        try:
+            sheet = self.bridge.get_active_sheet()
+            rows = sheet.getRows()
+            row_index = row_num - 1
+
+            rows.removeByIndex(row_index, count)
+
+            logger.info("%d satır, %d. satırdan itibaren silindi.", count, row_num)
+            return f"{count} satır, {row_num}. satırdan itibaren silindi."
+
+        except Exception as e:
+            logger.error("Satır silme hatası: %s", str(e))
+            raise
+
+    def delete_columns(self, col_letter: str, count: int = 1):
+        """
+        Belirtilen sütunları siler.
+
+        Args:
+            col_letter: Silinecek ilk sütun harfi.
+            count: Silinecek sütun sayısı.
+
+        Returns:
+            Sonuç açıklaması.
+        """
+        try:
+            sheet = self.bridge.get_active_sheet()
+            columns = sheet.getColumns()
+            col_index = 0
+            for char in col_letter.upper():
+                col_index = col_index * 26 + (ord(char) - ord('A') + 1)
+            col_index -= 1
+
+            columns.removeByIndex(col_index, count)
+
+            logger.info("%d sütun, %s sütunundan itibaren silindi.", count, col_letter.upper())
+            return f"{count} sütun, {col_letter.upper()} sütunundan itibaren silindi."
+
+        except Exception as e:
+            logger.error("Sütun silme hatası: %s", str(e))
+            raise
+
+    def auto_fit_column(self, col_letter: str):
+        """
+        Sütun genişliğini içeriğe göre otomatik ayarlar.
+
+        Args:
+            col_letter: Sütun harfi.
+
+        Returns:
+            Sonuç açıklaması.
+        """
+        try:
+            sheet = self.bridge.get_active_sheet()
+            columns = sheet.getColumns()
+            col_index = 0
+            for char in col_letter.upper():
+                col_index = col_index * 26 + (ord(char) - ord('A') + 1)
+            col_index -= 1
+
+            column = columns.getByIndex(col_index)
+            column.setPropertyValue("OptimalWidth", True)
+
+            logger.info("Sütun %s genişliği otomatik ayarlandı.", col_letter.upper())
+            return f"Sütun {col_letter.upper()} genişliği içeriğe göre ayarlandı."
+
+        except Exception as e:
+            logger.error("Otomatik sütun genişlik hatası (%s): %s", col_letter, str(e))
+            raise
 

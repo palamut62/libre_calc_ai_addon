@@ -12,7 +12,10 @@ from PyQt5.QtWidgets import (
     QTextEdit,
     QPushButton,
     QSizePolicy,
+    QPushButton,
+    QSizePolicy,
     QFrame,
+    QTextBrowser,
 )
 
 
@@ -114,22 +117,22 @@ class ChatWidget(QWidget):
         input_container.setObjectName("input_container")
         input_container.setStyleSheet("""
             QFrame#input_container {
-                background-color: #2d2d2d;
-                border: 1px solid #404040;
-                border-radius: 12px;
+                background-color: #ffffff;
+                border: 1px solid #cccccc;
+                border-radius: 8px;
                 padding: 4px;
             }
         """)
         
         input_v_layout = QVBoxLayout(input_container)
-        input_v_layout.setContentsMargins(8, 8, 8, 8)
+        input_v_layout.setContentsMargins(12, 12, 12, 12)
         input_v_layout.setSpacing(8)
 
         self._input_edit = QTextEdit()
-        self._input_edit.setPlaceholderText("Claude'a bir şunları sor... (Ctrl+Enter)")
-        self._input_edit.setFixedHeight(80)
+        self._input_edit.setPlaceholderText("Aras ile konuşun... (Ctrl+Enter)")
+        self._input_edit.setFixedHeight(70)
         self._input_edit.setFrameShape(QFrame.NoFrame)
-        self._input_edit.setStyleSheet("background-color: transparent; border: none;")
+        self._input_edit.setStyleSheet("background-color: transparent; border: none; font-size: 14px; color: #000000;")
         self._input_edit.setAcceptRichText(False)
         input_v_layout.addWidget(self._input_edit)
 
@@ -138,20 +141,22 @@ class ChatWidget(QWidget):
 
         self._clear_btn = QPushButton("Temizle")
         self._clear_btn.setFlat(True)
+        self._clear_btn.setCursor(Qt.PointingHandCursor)
         self._clear_btn.setStyleSheet("""
             QPushButton { 
                 background-color: transparent; 
-                color: #9ca3af; 
-                font-weight: normal;
-                padding: 4px 8px;
+                color: #666666; 
+                font-weight: 500;
+                padding: 6px 12px;
             }
-            QPushButton:hover { color: #e5e7eb; }
+            QPushButton:hover { color: #000000; background-color: #eeeeee; border-radius: 4px; }
         """)
         self._clear_btn.clicked.connect(self.clear_chat)
         input_h_layout.addWidget(self._clear_btn)
 
         self._send_btn = QPushButton("Gönder")
-        self._send_btn.setFixedWidth(80)
+        self._send_btn.setFixedWidth(100)
+        self._send_btn.setCursor(Qt.PointingHandCursor)
         self._send_btn.clicked.connect(self._on_send)
         input_h_layout.addWidget(self._send_btn)
 
@@ -177,48 +182,51 @@ class ChatWidget(QWidget):
         self.message_sent.emit(text)
 
     def add_message(self, role: str, content: str):
-        """Sohbete yeni mesaj baloncugu ekler.
-
-        Args:
-            role: Mesaj rolu ("user" veya "assistant").
-            content: Mesaj metni.
-        """
+        """Sohbete yeni mesaj baloncugu ekler."""
         wrapper = QWidget()
         v_layout = QVBoxLayout(wrapper)
         v_layout.setContentsMargins(0, 0, 0, 0)
-        v_layout.setSpacing(4)
+        v_layout.setSpacing(6)
 
-        # Header (Role Name)
         header = QLabel()
-        header.setStyleSheet("color: #9ca3af; font-weight: bold; font-size: 11px; text-transform: uppercase;")
+        header.setStyleSheet("color: #64748b; font-weight: 700; font-size: 10px; letter-spacing: 0.5px;")
         
-        bubble = QLabel()
-        bubble.setWordWrap(True)
-        bubble.setTextFormat(Qt.RichText)
-        bubble.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
-
+        bubble = QTextBrowser()
+        bubble.setFrameShape(QFrame.NoFrame)
+        bubble.setOpenExternalLinks(True)
+        bubble.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        bubble.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # Word wrap ayarları
+        bubble.setLineWrapMode(QTextBrowser.WidgetWidth)
+        
         if role == "user":
             header.setText("SİZ")
             bubble.setObjectName("user_bubble")
-            bubble.setText(content.replace("\n", "<br>"))
+            bubble.setHtml(f'<div style="line-height: 1.4;">{content.replace("\n", "<br>")}</div>')
+            
             v_layout.addWidget(header, 0, Qt.AlignRight)
             v_layout.addWidget(bubble, 0, Qt.AlignRight)
-            bubble.setMaximumWidth(320)
+            bubble.setFixedWidth(280)
         else:
-            header.setText("CLAUDE")
-            header.setStyleSheet("color: #D97757; font-weight: bold; font-size: 11px; text-transform: uppercase;")
+            header.setText("ARAS")
+            header.setStyleSheet("color: #18a303; font-weight: 700; font-size: 10px; letter-spacing: 0.5px;")
             bubble.setObjectName("ai_bubble")
-            bubble.setText(_markdown_to_html(content))
-            bubble.setOpenExternalLinks(True)
+            bubble.setHtml(f'<div style="line-height: 1.5;">{_markdown_to_html(content)}</div>')
+            
             v_layout.addWidget(header, 0, Qt.AlignLeft)
             v_layout.addWidget(bubble, 0, Qt.AlignLeft)
-            bubble.setMinimumWidth(300)
+            bubble.setFixedWidth(320)
 
-        # Stretch'ten once ekle (stretch her zaman son eleman)
+        # Dinamik yükseklik hesaplama
+        doc = bubble.document()
+        doc.setTextWidth(bubble.width())
+        # Yüksekliği içeriğe göre ayarla (biraz buffer ekle)
+        height = doc.size().height() + 24
+        bubble.setFixedHeight(int(height))
+
         count = self._messages_layout.count()
         self._messages_layout.insertWidget(count - 1, wrapper)
 
-        # Otomatik en alta kaydir
         QTimer.singleShot(100, self._scroll_to_bottom)
 
     def _scroll_to_bottom(self):
@@ -229,7 +237,7 @@ class ChatWidget(QWidget):
     def show_loading(self):
         """Yukleniyor gostergesi mi baslatir."""
         self._loading_dots = 0
-        self._loading_label.setText("Claude düşünüyor")
+        self._loading_label.setText("Aras düşünüyor")
         self._loading_label.setVisible(True)
         self._loading_timer.start()
 
@@ -242,7 +250,7 @@ class ChatWidget(QWidget):
         """Yukleniyor animasyonunu gunceller."""
         self._loading_dots = (self._loading_dots + 1) % 4
         dots = "." * self._loading_dots
-        self._loading_label.setText(f"Claude düşünüyor{dots}")
+        self._loading_label.setText(f"Aras düşünüyor{dots}")
 
     def clear_chat(self):
         """Tum mesajlari temizler."""
@@ -253,11 +261,50 @@ class ChatWidget(QWidget):
                 widget.deleteLater()
 
     def set_input_enabled(self, enabled: bool):
-        """Giris alanini ve gonder butonunu etkinlestirir/devre disi birakir.
-
-        Args:
-            enabled: True ise etkin, False ise devre disi.
-        """
+        """Giris alanini ve gonder butonunu etkinlestirir/devre disi birakir."""
         self._input_edit.setEnabled(enabled)
         self._send_btn.setEnabled(enabled)
         self._clear_btn.setEnabled(enabled)
+
+    def update_theme(self, theme_name: str):
+        """Chat bilesenlerinin temasini gunceller."""
+        is_dark = theme_name == "dark"
+        
+        # Input container
+        bg_color = "#1e293b" if is_dark else "#ffffff"
+        border_color = "#334155" if is_dark else "#cccccc"
+        text_color = "#f3f4f6" if is_dark else "#000000"
+        placeholder_color = "#94a3b8" if is_dark else "#666666"
+        btn_hover_bg = "#334155" if is_dark else "#eeeeee"
+        
+        self.findChild(QFrame, "input_container").setStyleSheet(f"""
+            QFrame#input_container {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+                padding: 4px;
+            }}
+        """)
+        
+        self._input_edit.setStyleSheet(f"background-color: transparent; border: none; font-size: 14px; color: {text_color};")
+        
+        self._clear_btn.setStyleSheet(f"""
+            QPushButton {{ 
+                background-color: transparent; 
+                color: {placeholder_color}; 
+                font-weight: 500;
+                padding: 6px 12px;
+            }}
+            QPushButton:hover {{ color: {text_color}; background-color: {btn_hover_bg}; border-radius: 4px; }}
+        """)
+
+    def update_language(self, lang: str):
+        """Chat bilesenlerinin dilini gunceller."""
+        from .i18n import get_text
+        
+        self._input_edit.setPlaceholderText(get_text("chat_placeholder", lang))
+        self._send_btn.setText(get_text("chat_send", lang))
+        self._clear_btn.setText(get_text("chat_clear", lang))
+        
+        # Loading metni degiskenini guncelle (eger varsa)
+        # Not: Loading animasyonu ozel oldugu icin anlik degismeyebilir ama sonraki sefer icin guncellenir

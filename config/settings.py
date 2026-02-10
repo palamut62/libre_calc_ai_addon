@@ -47,6 +47,8 @@ class Settings:
             # UI
             "ui_theme": "dark",
             "ui_language": "tr",
+            "openrouter_models": [],
+            "ollama_models": [],
         }
 
         # Ayarları yükle
@@ -167,6 +169,32 @@ class Settings:
 
     @theme.setter
     def theme(self, value: str):
-        if value not in ("dark", "light"):
-            raise ValueError("Tema 'dark' veya 'light' olmalıdır")
+        if value not in ("dark", "light", "system"):
+            raise ValueError("Tema 'dark', 'light' veya 'system' olmalıdır")
         self._settings["ui_theme"] = value
+
+    @property
+    def language(self) -> str:
+        return self._settings.get("ui_language", "system")
+
+    @language.setter
+    def language(self, value: str):
+        if value not in ("tr", "en", "system"):
+            raise ValueError("Dil 'tr', 'en' veya 'system' olmalıdır")
+        self._settings["ui_language"] = value
+
+    @property
+    def openrouter_models(self) -> list:
+        return self._settings.get("openrouter_models", [])
+
+    @openrouter_models.setter
+    def openrouter_models(self, value: list):
+        self._settings["openrouter_models"] = value
+
+    @property
+    def ollama_models(self) -> list:
+        return self._settings.get("ollama_models", [])
+
+    @ollama_models.setter
+    def ollama_models(self, value: list):
+        self._settings["ollama_models"] = value
