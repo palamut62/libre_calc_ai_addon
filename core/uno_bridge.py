@@ -261,6 +261,56 @@ class LibreOfficeBridge:
             result = chr(ord('A') + remainder) + result
         return result
 
+    @classmethod
+    def get_selection_address(cls, selection) -> str:
+        """
+        Seçimin (tek hücre, aralık veya çoklu aralık) adresini döndürür.
+
+        Args:
+            selection: LibreOffice seçim nesnesi.
+
+        Returns:
+            str: Adres (ör. "A1", "A1:B5", "A1, C5:D10").
+        """
+        if selection is None:
+            return "-"
+
+        try:
+            # Tekil hücre veya aralık
+            if hasattr(selection, "getCellAddress"):
+                addr = selection.getCellAddress()
+                col = cls._index_to_column(addr.Column)
+                return f"{col}{addr.Row + 1}"
+
+            if hasattr(selection, "getRangeAddress"):
+                addr = selection.getRangeAddress()
+                start_col = cls._index_to_column(addr.StartColumn)
+                end_col = cls._index_to_column(addr.EndColumn)
+                return f"{start_col}{addr.StartRow + 1}:{end_col}{addr.EndRow + 1}"
+
+            # Çoklu seçim (SheetCellRanges)
+            if hasattr(selection, "getRangeAddresses"):
+                addrs = selection.getRangeAddresses()
+                parts = []
+                # Çok fazla alan seçilirse özet geç
+                if len(addrs) > 3:
+                     return f"Çoklu Seçim ({len(addrs)} alan)"
+
+                for addr in addrs:
+                    start_col = cls._index_to_column(addr.StartColumn)
+                    end_col = cls._index_to_column(addr.EndColumn)
+                    if addr.StartColumn == addr.EndColumn and addr.StartRow == addr.EndRow:
+                         parts.append(f"{start_col}{addr.StartRow + 1}")
+                    else:
+                         parts.append(f"{start_col}{addr.StartRow + 1}:{end_col}{addr.EndRow + 1}")
+                return ", ".join(parts)
+
+            return "Bilinmeyen Seçim"
+
+        except Exception as e:
+            logger.error("Seçim adresi alınırken hata: %s", e)
+            return "Hata"
+
     def __enter__(self):
         """Context manager girişi - bağlantıyı açar."""
         self.connect()

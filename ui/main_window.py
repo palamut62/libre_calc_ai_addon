@@ -17,13 +17,12 @@ from PyQt5.QtWidgets import (
 )
 
 from config.settings import Settings
-from core import LibreOfficeBridge, CellInspector, CellManipulator, SheetAnalyzer, ErrorDetector
+from core import LibreOfficeBridge, CellInspector, CellManipulator, SheetAnalyzer, ErrorDetector, LibreOfficeEventListener
 from llm import OpenRouterProvider, OllamaProvider
 from llm.tool_definitions import TOOLS, ToolDispatcher
 from llm.prompt_templates import SYSTEM_PROMPT
 
 from .chat_widget import ChatWidget
-from .cell_info_widget import CellInfoWidget
 from .settings_dialog import SettingsDialog
 from .styles import get_theme
 
@@ -124,20 +123,9 @@ class MainWindow(QMainWindow):
 
     def _setup_ui(self):
         """Ana arayuz bilesenlerini olusturur."""
-        splitter = QSplitter(Qt.Vertical)
-        splitter.setHandleWidth(1)
-
         self._chat_widget = ChatWidget()
         self._chat_widget.message_sent.connect(self._on_message_sent)
-        splitter.addWidget(self._chat_widget)
-
-        self._cell_info_widget = CellInfoWidget()
-        splitter.addWidget(self._cell_info_widget)
-
-        splitter.setStretchFactor(0, 7)
-        splitter.setStretchFactor(1, 3)
-
-        self.setCentralWidget(splitter)
+        self.setCentralWidget(self._chat_widget)
 
     def _setup_menus(self):
         """Menu cubuklarini olusturur."""
@@ -219,12 +207,16 @@ class MainWindow(QMainWindow):
         """Durum cubugunu olusturur."""
         self._lo_status_label = QLabel()
         self._llm_status_label = QLabel()
-        
+        self._cell_status_label = QLabel() # Secili hucre adresi
+
         # Modernleştirilmiş minimalist görünüm
         self._lo_status_label.setContentsMargins(8, 0, 8, 0)
         self._llm_status_label.setContentsMargins(8, 0, 8, 0)
+        self._cell_status_label.setContentsMargins(8, 0, 8, 0)
+        self._cell_status_label.setStyleSheet("font-weight: bold; color: #D97757;")
 
         self.statusBar().addWidget(self._lo_status_label)
+        self.statusBar().addWidget(self._cell_status_label) # Ortaya ekle
         self.statusBar().addPermanentWidget(self._llm_status_label)
 
         self._update_status_bar()
@@ -407,6 +399,12 @@ class MainWindow(QMainWindow):
                 self._dispatcher = ToolDispatcher(
                     inspector, manipulator, analyzer, detector
                 )
+
+                # Listener baslat
+                self._listener = LibreOfficeEventListener(self._bridge)
+                self._listener.selection_changed.connect(self._on_selection_changed)
+                self._listener.start()
+
                 self._update_status_bar()
                 return True
         except Exception as exc:
@@ -463,19 +461,24 @@ class MainWindow(QMainWindow):
             if isinstance(value, str) and value.startswith("Err:"):
                 details["error"] = value
 
-            self._cell_info_widget.update_cell_info(details)
+            # Analiz sonucunu sohbete yaz
+            analysis_text = (
+                f"**Hücre:** {details.get('address')}\n"
+                f"**Değer:** {details.get('value')}\n"
+                f"**Formül:** `{details.get('formula')}`"
+            )
+            self._chat_widget.add_message("assistant", analysis_text)
 
         except Exception as exc:
             logger.error("Hucre analiz hatasi: %s", exc)
             self._chat_widget.add_message(
-                "assistant", f"Hucre analiz hatasi: {exc}"
+                "assistant", f"Hücre analizi sırasında hata oluştu: {exc}"
             )
 
     def _clear_conversation(self):
         """Sohbet gecmisini temizler."""
         self._conversation.clear()
         self._chat_widget.clear_chat()
-        self._cell_info_widget.clear()
 
     def _open_settings(self):
         """Ayarlar diyalogunu acar."""
@@ -540,3 +543,22 @@ class MainWindow(QMainWindow):
             self._bridge.disconnect()
 
         event.accept()
+
+    def _on_selection_changed(self, source):
+        """LibreOffice'te secim degistiginde cagirilir.
+        
+        Args:
+            source: Olay kaynagi (Controller).
+        """
+        try:
+            selection = source.getSelection()
+            # Yeni çoklu seçim destekli metod
+            address = LibreOfficeBridge.get_selection_address(selection)
+            
+            # Durum cubugunu guncelle
+            self._cell_status_label.setText(f"Seçili: {address}")
+
+        except Exception as e:
+            logger.error("Seçim işleme hatası: %s", e)
+            self._cell_status_label.setText("Seçili: -")
+

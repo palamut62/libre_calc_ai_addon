@@ -1,6 +1,6 @@
 """Hucre bilgi paneli - Secili hucrenin detaylarini gosterir."""
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QParallelAnimationGroup, QPropertyAnimation, QAbstractAnimation, QSize
 from PyQt5.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -10,14 +10,71 @@ from PyQt5.QtWidgets import (
     QTreeWidget,
     QTreeWidgetItem,
     QFrame,
+    QToolButton,
+    QScrollArea,
+    QSizePolicy,
 )
 
 
-class CellInfoWidget(QWidget):
-    """Hucre analiz paneli.
+class CollapsibleBox(QWidget):
+    """
+    Acilir kapanir bir baslik ve icerik alanina sahip widget.
+    Basliga tiklandiginda icerik gizlenir/gosterilir.
+    """
+    def __init__(self, title="", parent=None):
+        super(CollapsibleBox, self).__init__(parent)
 
-    Secili hucrenin adresi, degeri, formulu, tipi ve
-    oncul/ardil hucre agacini gosterir.
+        self.toggle_button = QToolButton(text=title, checkable=True, checked=False)
+        self.toggle_button.setStyleSheet("QToolButton { border: none; font-weight: bold; color: #D97757; }")
+        self.toggle_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.toggle_button.setArrowType(Qt.RightArrow)
+        self.toggle_button.pressed.connect(self.on_pressed)
+
+        self.toggle_animation = QParallelAnimationGroup(self)
+        self.content_area = QScrollArea(maximumHeight=0, minimumHeight=0)
+        self.content_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.content_area.setFrameShape(QFrame.NoFrame)
+
+        lay = QVBoxLayout(self)
+        lay.setSpacing(0)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self.toggle_button)
+        lay.addWidget(self.content_area)
+
+        self.toggle_animation.addAnimation(QPropertyAnimation(self, b"minimumHeight"))
+        self.toggle_animation.addAnimation(QPropertyAnimation(self, b"maximumHeight"))
+        self.toggle_animation.addAnimation(QPropertyAnimation(self.content_area, b"maximumHeight"))
+
+    def on_pressed(self):
+        checked = self.toggle_button.isChecked()
+        self.toggle_button.setArrowType(Qt.DownArrow if not checked else Qt.RightArrow)
+        self.toggle_animation.setDirection(
+            QAbstractAnimation.Forward if not checked else QAbstractAnimation.Backward
+        )
+        self.toggle_animation.start()
+
+    def setContentLayout(self, layout):
+        lay = self.content_area.layout()
+        del lay
+        self.content_area.setLayout(layout)
+        collapsed_height = self.sizeHint().height() - self.content_area.maximumHeight()
+        content_height = layout.sizeHint().height()
+        for i in range(self.toggle_animation.animationCount()):
+            animation = self.toggle_animation.animationAt(i)
+            animation.setDuration(300)
+            animation.setStartValue(collapsed_height)
+            animation.setEndValue(collapsed_height + content_height)
+
+        content_animation = self.toggle_animation.animationAt(self.toggle_animation.animationCount() - 1)
+        content_animation.setDuration(300)
+        content_animation.setStartValue(0)
+        content_animation.setEndValue(content_height)
+
+
+class CellInfoWidget(QWidget):
+    """
+    Secili hucre hakkinda detayli bilgi gosteren panel.
+    Acilir/kapanir bolumler halinde duzenlenmistir.
     """
 
     def __init__(self, parent=None):
@@ -30,8 +87,9 @@ class CellInfoWidget(QWidget):
         layout.setContentsMargins(16, 8, 16, 16)
         layout.setSpacing(12)
 
-        # Hucre bilgi grubu
-        info_group = QGroupBox("Hücre Detayları")
+        # Hucre Detaylari (Collapsible)
+        self._details_box = CollapsibleBox("Hücre Detayları (Tıkla)")
+        
         info_form = QFormLayout()
         info_form.setSpacing(8)
         info_form.setLabelAlignment(Qt.AlignLeft)
@@ -55,8 +113,8 @@ class CellInfoWidget(QWidget):
         self._lbl_type = QLabel("-")
         info_form.addRow("Tip:", self._lbl_type)
 
-        info_group.setLayout(info_form)
-        layout.addWidget(info_group)
+        self._details_box.setContentLayout(info_form)
+        layout.addWidget(self._details_box)
 
         # Hata bolumu
         self._error_label = QLabel("")
@@ -65,8 +123,9 @@ class CellInfoWidget(QWidget):
         self._error_label.setVisible(False)
         layout.addWidget(self._error_label)
 
-        # Oncul/Ardil agaci
-        tree_group = QGroupBox("İlişkili Hücreler")
+        # Iliskili Hucreler (Collapsible)
+        self._relations_box = CollapsibleBox("İlişkili Hücreler (Tıkla)")
+        
         tree_layout = QVBoxLayout()
         tree_layout.setContentsMargins(8, 12, 8, 8)
 
@@ -75,10 +134,11 @@ class CellInfoWidget(QWidget):
         self._tree.setAlternatingRowColors(True)
         self._tree.setColumnWidth(0, 100)
         self._tree.setFrameShape(QFrame.NoFrame)
+        self._tree.setMinimumHeight(150)
         tree_layout.addWidget(self._tree)
 
-        tree_group.setLayout(tree_layout)
-        layout.addWidget(tree_group)
+        self._relations_box.setContentLayout(tree_layout)
+        layout.addWidget(self._relations_box)
 
         layout.addStretch()
 
@@ -129,13 +189,16 @@ class CellInfoWidget(QWidget):
             dep_item.setExpanded(True)
             for addr in dependents:
                 QTreeWidgetItem(dep_item, [addr, "Çıktı"])
+    
+    def is_details_expanded(self):
+        """Detay paneli acik mi?"""
+        return self._details_box.toggle_button.isChecked()
 
     def clear(self):
         """Tum hucre bilgilerini temizler."""
         self._lbl_address.setText("-")
         self._lbl_value.setText("-")
         self._lbl_formula.setText("-")
-        self._lbl_formula_local.setText("-")
         self._lbl_type.setText("-")
         self._error_label.setVisible(False)
         self._tree.clear()
