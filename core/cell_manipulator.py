@@ -132,6 +132,10 @@ class CellManipulator:
         bg_color: int = None,
         font_color: int = None,
         font_size: float = None,
+        h_align: str = None,
+        v_align: str = None,
+        wrap_text: bool = None,
+        border_color: int = None,
     ):
         """
         Hücreye stil uygular.
@@ -140,34 +144,20 @@ class CellManipulator:
             address: Hücre adresi (ör. "A1").
             bold: Kalın yazı (True/False/None).
             italic: Italik yazı (True/False/None).
-            bg_color: Arka plan rengi (RGB int, ör. 0xFF0000 kırmızı).
+            bg_color: Arka plan rengi (RGB int).
             font_color: Yazı rengi (RGB int).
             font_size: Yazı boyutu (punto).
+            h_align: Yatay hizalama ("left", "center", "right", "justify").
+            v_align: Dikey hizalama ("top", "center", "bottom").
+            wrap_text: Metni kaydır (True/False).
+            border_color: Kenarlık rengi (RGB int).
         """
         try:
             cell = self._get_cell(address)
-
-            if bold is not None:
-                from com.sun.star.awt.FontWeight import BOLD, NORMAL
-                cell.setPropertyValue(
-                    "CharWeight", BOLD if bold else NORMAL
-                )
-
-            if italic is not None:
-                from com.sun.star.awt.FontSlant import ITALIC, NONE
-                cell.setPropertyValue(
-                    "CharPosture", ITALIC if italic else NONE
-                )
-
-            if bg_color is not None:
-                cell.setPropertyValue("CellBackColor", bg_color)
-
-            if font_color is not None:
-                cell.setPropertyValue("CharColor", font_color)
-
-            if font_size is not None:
-                cell.setPropertyValue("CharHeight", font_size)
-
+            self._apply_style_properties(
+                cell, bold, italic, bg_color, font_color, font_size,
+                h_align, v_align, wrap_text, border_color
+            )
             logger.info("Hücre %s stili güncellendi.", address.upper())
 
         except Exception as e:
@@ -182,6 +172,10 @@ class CellManipulator:
         bg_color: int = None,
         font_color: int = None,
         font_size: float = None,
+        h_align: str = None,
+        v_align: str = None,
+        wrap_text: bool = None,
+        border_color: int = None,
     ):
         """
         Hücre aralığına stil uygular.
@@ -193,32 +187,18 @@ class CellManipulator:
             bg_color: Arka plan rengi.
             font_color: Yazı rengi.
             font_size: Yazı boyutu.
+            h_align: Yatay hizalama ("left", "center", "right", "justify").
+            v_align: Dikey hizalama ("top", "center", "bottom").
+            wrap_text: Metni kaydır (True/False).
+            border_color: Kenarlık rengi (RGB int).
         """
         try:
             sheet = self.bridge.get_active_sheet()
             cell_range = self.bridge.get_cell_range(sheet, range_str)
-
-            if bold is not None:
-                from com.sun.star.awt.FontWeight import BOLD, NORMAL
-                cell_range.setPropertyValue(
-                    "CharWeight", BOLD if bold else NORMAL
-                )
-
-            if italic is not None:
-                from com.sun.star.awt.FontSlant import ITALIC, NONE
-                cell_range.setPropertyValue(
-                    "CharPosture", ITALIC if italic else NONE
-                )
-
-            if bg_color is not None:
-                cell_range.setPropertyValue("CellBackColor", bg_color)
-
-            if font_color is not None:
-                cell_range.setPropertyValue("CharColor", font_color)
-
-            if font_size is not None:
-                cell_range.setPropertyValue("CharHeight", font_size)
-
+            self._apply_style_properties(
+                cell_range, bold, italic, bg_color, font_color, font_size,
+                h_align, v_align, wrap_text, border_color
+            )
             logger.info("Aralık %s stili güncellendi.", range_str.upper())
 
         except Exception as e:
@@ -294,3 +274,68 @@ class CellManipulator:
                 "Aralık temizleme hatası (%s): %s", range_str, str(e)
             )
             raise
+
+    def _apply_style_properties(
+        self, obj, bold, italic, bg_color, font_color, font_size,
+        h_align, v_align, wrap_text, border_color
+    ):
+        """Ortak stil özelliklerini uygular (hücre veya aralık için)."""
+        if bold is not None:
+            from com.sun.star.awt.FontWeight import BOLD, NORMAL
+            obj.setPropertyValue("CharWeight", BOLD if bold else NORMAL)
+
+        if italic is not None:
+            from com.sun.star.awt.FontSlant import ITALIC, NONE
+            obj.setPropertyValue("CharPosture", ITALIC if italic else NONE)
+
+        if bg_color is not None:
+            obj.setPropertyValue("CellBackColor", bg_color)
+
+        if font_color is not None:
+            obj.setPropertyValue("CharColor", font_color)
+
+        if font_size is not None:
+            obj.setPropertyValue("CharHeight", font_size)
+
+        if h_align is not None:
+            from com.sun.star.table.CellHoriJustify import (
+                LEFT, CENTER, RIGHT, BLOCK, STANDARD
+            )
+            align_map = {
+                "left": LEFT, "center": CENTER, "right": RIGHT,
+                "justify": BLOCK, "standard": STANDARD
+            }
+            if h_align.lower() in align_map:
+                obj.setPropertyValue("HoriJustify", align_map[h_align.lower()])
+
+        if v_align is not None:
+            from com.sun.star.table.CellVertJustify import (
+                TOP, CENTER, BOTTOM, STANDARD
+            )
+            align_map = {
+                "top": TOP, "center": CENTER, "bottom": BOTTOM,
+                "standard": STANDARD
+            }
+            if v_align.lower() in align_map:
+                obj.setPropertyValue("VertJustify", align_map[v_align.lower()])
+
+        if wrap_text is not None:
+            obj.setPropertyValue("IsTextWrapped", wrap_text)
+
+        if border_color is not None:
+             self._apply_borders(obj, border_color)
+
+    def _apply_borders(self, obj, color: int):
+        """Kenarlıkları uygular."""
+        from com.sun.star.table import BorderLine
+        
+        line = BorderLine()
+        line.Color = color
+        line.OuterLineWidth = 50 # 0.05pt ~ 2, biraz daha kalin yapalim 50 (~1.25mm degil, 1/100mm cinsinden olabilir, hayir BorderLine structinda OuterLineWidth in 1/100mm. 2 cok ince, 25 veya 50 iyi)
+        # LibreOffice API: OuterLineWidth is in 1/100 mm. So 50 is 0.5 mm.
+
+        # Tum kenarlara uygula
+        obj.setPropertyValue("TopBorder", line)
+        obj.setPropertyValue("BottomBorder", line)
+        obj.setPropertyValue("LeftBorder", line)
+        obj.setPropertyValue("RightBorder", line)

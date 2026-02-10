@@ -81,6 +81,24 @@ TOOLS = [
                         "type": "string",
                         "description": "Yazı rengi (hex: #000000 veya isim: red)",
                     },
+                    "h_align": {
+                        "type": "string",
+                        "enum": ["left", "center", "right", "justify"],
+                        "description": "Yatay hizalama",
+                    },
+                    "v_align": {
+                        "type": "string",
+                        "enum": ["top", "center", "bottom"],
+                        "description": "Dikey hizalama",
+                    },
+                    "wrap_text": {
+                        "type": "boolean",
+                        "description": "Metni kaydır",
+                    },
+                    "border_color": {
+                        "type": "string",
+                        "description": "Kenarlık rengi (hex veya isim). Hücre/aralık çevresine çerçeve çizer.",
+                    },
                     "number_format": {
                         "type": "string",
                         "description": "Sayı biçimi (ör: #,##0.00, 0%, dd.mm.yyyy)",
@@ -193,7 +211,7 @@ class ToolDispatcher:
         range_name = args.pop("range_name")
 
         # Renk dönüşümü (hex string -> int)
-        for color_key in ("bg_color", "font_color"):
+        for color_key in ("bg_color", "font_color", "border_color"):
             if color_key in args and isinstance(args[color_key], str):
                 args[color_key] = self._parse_color(args[color_key])
 
