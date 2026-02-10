@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=LibreCalc AI Asistanı
+Comment=LibreOffice Calc için AI destekli asistan
+Exec=/home/aras/Masaüstü/UYGULAMALARIM/libre_clac_ai_addon/launch.sh
+Icon=libreoffice-calc
+Terminal=false
+Type=Application
+Categories=Office;Spreadsheet;
+Keywords=calc;spreadsheet;ai;assistant;

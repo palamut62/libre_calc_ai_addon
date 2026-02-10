@@ -1,0 +1,230 @@
+"""LLM araç tanımları ve araç yönlendirici (dispatcher).
+
+OpenAI function calling şemasına uygun araç tanımları ve
+gelen araç çağrılarını ilgili core modül metodlarına yönlendiren sınıf.
+"""
+
+import json
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "read_cell_range",
+            "description": "Belirtilen hücre aralığındaki değerleri okur",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_name": {
+                        "type": "string",
+                        "description": "Hücre aralığı (ör: A1:D10, B2, Sheet1.A1:C5)",
+                    }
+                },
+                "required": ["range_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_formula",
+            "description": "Belirtilen hücreye metin, sayı veya formül yazar. Düz metin için direkt yaz (ör: 'Toplam'), sayı için sayı yaz (ör: '42'), formül için = ile başlat (ör: '=SUM(A1:A10)'). Birden fazla hücreye yazmak için bu aracı tekrar tekrar çağır.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cell": {
+                        "type": "string",
+                        "description": "Hedef hücre adresi (ör: A1, B5)",
+                    },
+                    "formula": {
+                        "type": "string",
+                        "description": "Yazılacak içerik: metin (ör: 'Başlık'), sayı (ör: '100'), veya formül (ör: '=A1+B1')",
+                    },
+                },
+                "required": ["cell", "formula"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_cell_style",
+            "description": "Belirtilen hücre veya aralığa stil ve biçimlendirme uygular",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_name": {
+                        "type": "string",
+                        "description": "Hedef hücre veya aralık (ör: A1, A1:D10)",
+                    },
+                    "bold": {
+                        "type": "boolean",
+                        "description": "Kalın yazı tipi",
+                    },
+                    "italic": {
+                        "type": "boolean",
+                        "description": "İtalik yazı tipi",
+                    },
+                    "font_size": {
+                        "type": "number",
+                        "description": "Yazı tipi boyutu (punto)",
+                    },
+                    "bg_color": {
+                        "type": "string",
+                        "description": "Arka plan rengi (hex: #FF0000 veya isim: yellow)",
+                    },
+                    "font_color": {
+                        "type": "string",
+                        "description": "Yazı rengi (hex: #000000 veya isim: red)",
+                    },
+                    "number_format": {
+                        "type": "string",
+                        "description": "Sayı biçimi (ör: #,##0.00, 0%, dd.mm.yyyy)",
+                    },
+                },
+                "required": ["range_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_sheet_summary",
+            "description": "Aktif sayfanın veya belirtilen sayfanın özetini döndürür (boyut, dolu hücre sayısı, sütun başlıkları vb.)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Sayfa adı (boş bırakılırsa aktif sayfa kullanılır)",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "detect_and_explain_errors",
+            "description": "Belirtilen aralıktaki formül hatalarını tespit eder ve Türkçe açıklama ile çözüm önerisi sunar",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_name": {
+                        "type": "string",
+                        "description": "Kontrol edilecek hücre aralığı (ör: A1:Z100). Boş bırakılırsa tüm sayfa taranır.",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+]
+
+
+class ToolDispatcher:
+    """Araç çağrılarını ilgili core modül metodlarına yönlendirir.
+
+    LLM'den gelen tool_call yanıtlarını alır, araç adına göre
+    uygun core modül metodunu çağırır ve sonucu döndürür.
+    """
+
+    def __init__(self, cell_inspector, cell_manipulator, sheet_analyzer, error_detector):
+        """Dispatcher'ı core modül nesneleriyle başlatır.
+
+        Args:
+            cell_inspector: Hücre okuma işlemleri için CellInspector nesnesi.
+            cell_manipulator: Hücre yazma/stil işlemleri için CellManipulator nesnesi.
+            sheet_analyzer: Sayfa analizi için SheetAnalyzer nesnesi.
+            error_detector: Hata tespiti için ErrorDetector nesnesi.
+        """
+        self._cell_inspector = cell_inspector
+        self._cell_manipulator = cell_manipulator
+        self._sheet_analyzer = sheet_analyzer
+        self._error_detector = error_detector
+
+        self._dispatch_map = {
+            "read_cell_range": self._read_cell_range,
+            "write_formula": self._write_formula,
+            "set_cell_style": self._set_cell_style,
+            "get_sheet_summary": self._get_sheet_summary,
+            "detect_and_explain_errors": self._detect_and_explain_errors,
+        }
+
+    def dispatch(self, tool_name: str, arguments: dict) -> str:
+        """Araç çağrısını ilgili metoda yönlendirir ve sonucu string olarak döndürür.
+
+        Args:
+            tool_name: Çağrılacak araç adı.
+            arguments: Araç parametreleri sözlüğü.
+
+        Returns:
+            Araç çalışma sonucu (JSON string).
+        """
+        handler = self._dispatch_map.get(tool_name)
+        if handler is None:
+            return json.dumps({"error": f"Bilinmeyen araç: {tool_name}"}, ensure_ascii=False)
+
+        try:
+            result = handler(arguments)
+            return json.dumps({"result": result}, ensure_ascii=False, default=str)
+        except Exception as exc:
+            logger.error("Araç çalıştırma hatası (%s): %s", tool_name, exc)
+            return json.dumps(
+                {"error": f"Araç çalıştırma hatası: {exc}"}, ensure_ascii=False
+            )
+
+    def _read_cell_range(self, args: dict):
+        """Hücre aralığını okur."""
+        return self._cell_inspector.read_range(args["range_name"])
+
+    def _write_formula(self, args: dict):
+        """Hücreye formül veya değer yazar."""
+        return self._cell_manipulator.write_formula(args["cell"], args["formula"])
+
+    def _set_cell_style(self, args: dict):
+        """Hücre stilini ayarlar."""
+        args = dict(args)  # orijinali değiştirme
+        range_name = args.pop("range_name")
+
+        # Renk dönüşümü (hex string -> int)
+        for color_key in ("bg_color", "font_color"):
+            if color_key in args and isinstance(args[color_key], str):
+                args[color_key] = self._parse_color(args[color_key])
+
+        # Aralık mı tekil hücre mi?
+        if ":" in range_name:
+            return self._cell_manipulator.set_range_style(range_name, **args)
+        else:
+            return self._cell_manipulator.set_cell_style(range_name, **args)
+
+    @staticmethod
+    def _parse_color(color_str: str) -> int:
+        """Renk string'ini RGB int'e dönüştürür."""
+        color_str = color_str.strip().lower()
+        color_names = {
+            "red": 0xFF0000, "green": 0x00FF00, "blue": 0x0000FF,
+            "yellow": 0xFFFF00, "white": 0xFFFFFF, "black": 0x000000,
+            "orange": 0xFF8C00, "purple": 0x800080, "gray": 0x808080,
+            "grey": 0x808080, "cyan": 0x00FFFF, "pink": 0xFFC0CB,
+        }
+        if color_str in color_names:
+            return color_names[color_str]
+        if color_str.startswith("#"):
+            return int(color_str[1:], 16)
+        return int(color_str, 16)
+
+    def _get_sheet_summary(self, args: dict):
+        """Sayfa özetini döndürür."""
+        sheet_name = args.get("sheet_name")
+        return self._sheet_analyzer.get_summary(sheet_name)
+
+    def _detect_and_explain_errors(self, args: dict):
+        """Hataları tespit eder ve açıklar."""
+        range_name = args.get("range_name")
+        return self._error_detector.detect_and_explain(range_name)
