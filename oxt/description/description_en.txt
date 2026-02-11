@@ -1,0 +1,22 @@
+LibreCalc AI Assistant
+
+An intelligent AI-powered assistant for LibreOffice Calc that helps you:
+
+- Read and analyze spreadsheet data
+- Write formulas with natural language
+- Apply cell styles and formatting
+- Detect and fix formula errors
+- Get insights about your data
+
+Powered by OpenRouter and Ollama LLM providers.
+
+Features:
+- Natural language interface
+- 18+ spreadsheet tools
+- Dark/Light theme support
+- Turkish/English interface
+- Works offline with Ollama
+
+Requirements:
+- LibreOffice 6.0 or later
+- Internet connection (for OpenRouter) or local Ollama instance

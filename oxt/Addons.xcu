@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<oor:component-data xmlns:oor="http://openoffice.org/2001/registry"
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    oor:name="Addons" oor:package="org.openoffice.Office">
+
+    <node oor:name="AddonUI">
+
+        <!-- ============================================ -->
+        <!-- MENU BAR - Adds "AI Assistant" menu to Calc -->
+        <!-- ============================================ -->
+        <node oor:name="OfficeMenuBar">
+            <node oor:name="com.aras.librecalc.ai.menu" oor:op="replace">
+                <prop oor:name="Title" oor:type="xs:string">
+                    <value>AI Assistant</value>
+                </prop>
+                <!-- Only show in Calc -->
+                <prop oor:name="Context" oor:type="xs:string">
+                    <value>com.sun.star.sheet.SpreadsheetDocument</value>
+                </prop>
+                <node oor:name="Submenu">
+                    <!-- Open Assistant -->
+                    <node oor:name="m1" oor:op="replace">
+                        <prop oor:name="URL" oor:type="xs:string">
+                            <value>vnd.sun.star.script:libre_calc_ai-1.0.0.oxt/Scripts/python/interface.py$show_assistant?language=Python&amp;location=user:uno_packages</value>
+                        </prop>
+                        <prop oor:name="Title" oor:type="xs:string">
+                            <value xml:lang="en">Open Assistant</value>
+                            <value xml:lang="tr">Asistani Ac</value>
+                        </prop>
+                        <prop oor:name="Target" oor:type="xs:string">
+                            <value>_self</value>
+                        </prop>
+                    </node>
+                    <!-- Separator -->
+                    <node oor:name="m2" oor:op="replace">
+                        <prop oor:name="URL" oor:type="xs:string">
+                            <value>private:separator</value>
+                        </prop>
+                    </node>
+                    <!-- Settings -->
+                    <node oor:name="m3" oor:op="replace">
+                        <prop oor:name="URL" oor:type="xs:string">
+                            <value>vnd.sun.star.script:libre_calc_ai-1.0.0.oxt/Scripts/python/interface.py$show_settings?language=Python&amp;location=user:uno_packages</value>
+                        </prop>
+                        <prop oor:name="Title" oor:type="xs:string">
+                            <value xml:lang="en">Settings</value>
+                            <value xml:lang="tr">Ayarlar</value>
+                        </prop>
+                        <prop oor:name="Target" oor:type="xs:string">
+                            <value>_self</value>
+                        </prop>
+                    </node>
+                    <!-- About -->
+                    <node oor:name="m4" oor:op="replace">
+                        <prop oor:name="URL" oor:type="xs:string">
+                            <value>vnd.sun.star.script:libre_calc_ai-1.0.0.oxt/Scripts/python/interface.py$show_about?language=Python&amp;location=user:uno_packages</value>
+                        </prop>
+                        <prop oor:name="Title" oor:type="xs:string">
+                            <value xml:lang="en">About</value>
+                            <value xml:lang="tr">Hakkinda</value>
+                        </prop>
+                        <prop oor:name="Target" oor:type="xs:string">
+                            <value>_self</value>
+                        </prop>
+                    </node>
+                </node>
+            </node>
+        </node>
+
+        <!-- ============================================ -->
+        <!-- TOOLBAR - Adds AI button to toolbar -->
+        <!-- ============================================ -->
+        <node oor:name="OfficeToolBar">
+            <node oor:name="com.aras.librecalc.ai.toolbar" oor:op="replace">
+                <prop oor:name="Title" oor:type="xs:string">
+                    <value>AI Assistant</value>
+                </prop>
+                <node oor:name="ToolBarItems">
+                    <node oor:name="t1" oor:op="replace">
+                        <prop oor:name="URL" oor:type="xs:string">
+                            <value>vnd.sun.star.script:libre_calc_ai-1.0.0.oxt/Scripts/python/interface.py$show_assistant?language=Python&amp;location=user:uno_packages</value>
+                        </prop>
+                        <prop oor:name="Title" oor:type="xs:string">
+                            <value xml:lang="en">AI Assistant</value>
+                            <value xml:lang="tr">AI Asistan</value>
+                        </prop>
+                        <prop oor:name="Target" oor:type="xs:string">
+                            <value>_self</value>
+                        </prop>
+                        <prop oor:name="Context" oor:type="xs:string">
+                            <value>com.sun.star.sheet.SpreadsheetDocument</value>
+                        </prop>
+                        <prop oor:name="ImageIdentifier" oor:type="xs:string">
+                            <value>%origin%/icons/calcai_26.svg</value>
+                        </prop>
+                    </node>
+                </node>
+            </node>
+        </node>
+
+        <!-- ============================================ -->
+        <!-- IMAGES - Icon definitions -->
+        <!-- ============================================ -->
+        <node oor:name="Images">
+            <node oor:name="com.aras.librecalc.ai.images" oor:op="replace">
+                <prop oor:name="URL" oor:type="xs:string">
+                    <value>vnd.sun.star.script:libre_calc_ai-1.0.0.oxt/Scripts/python/interface.py$show_assistant?language=Python&amp;location=user:uno_packages</value>
+                </prop>
+                <node oor:name="UserDefinedImages">
+                    <prop oor:name="ImageSmallURL" oor:type="xs:string">
+                        <value>%origin%/icons/calcai_16.svg</value>
+                    </prop>
+                    <prop oor:name="ImageBigURL" oor:type="xs:string">
+                        <value>%origin%/icons/calcai_26.svg</value>
+                    </prop>
+                </node>
+            </node>
+        </node>
+
+    </node>
+</oor:component-data>

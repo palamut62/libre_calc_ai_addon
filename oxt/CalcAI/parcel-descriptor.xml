@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<parcel language="Python" xmlns:parcel="scripting.module-description.xmlns">
+    <script language="Python">
+        <locale lang="en">
+            <displayname value="Show AI Assistant"/>
+            <description value="Opens the AI Assistant panel"/>
+        </locale>
+        <locale lang="tr">
+            <displayname value="AI Asistanı Aç"/>
+            <description value="AI Asistan panelini açar"/>
+        </locale>
+        <functionname value="CalcAI.main.show_assistant"/>
+        <logicalname value="CalcAI.main.show_assistant"/>
+    </script>
+    <script language="Python">
+        <locale lang="en">
+            <displayname value="Settings"/>
+            <description value="Opens settings dialog"/>
+        </locale>
+        <locale lang="tr">
+            <displayname value="Ayarlar"/>
+            <description value="Ayarlar penceresini açar"/>
+        </locale>
+        <functionname value="CalcAI.main.show_settings"/>
+        <logicalname value="CalcAI.main.show_settings"/>
+    </script>
+    <script language="Python">
+        <locale lang="en">
+            <displayname value="About"/>
+            <description value="Shows about dialog"/>
+        </locale>
+        <locale lang="tr">
+            <displayname value="Hakkında"/>
+            <description value="Hakkında penceresini gösterir"/>
+        </locale>
+        <functionname value="CalcAI.main.show_about"/>
+        <logicalname value="CalcAI.main.show_about"/>
+    </script>
+</parcel>

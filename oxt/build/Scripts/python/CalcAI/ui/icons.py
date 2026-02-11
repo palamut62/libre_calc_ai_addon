@@ -1,0 +1,88 @@
+"""Uygulama ikonları yönetimi."""
+
+import os
+from pathlib import Path
+
+from PyQt5.QtGui import QIcon
+from PyQt5.QtWidgets import QStyle, QWidget
+
+# İkon dosyalarının bulunduğu dizin
+ICONS_DIR = Path(__file__).parent.parent / "assets" / "icons"
+
+# İkon isimleri ve dosya eşleştirmesi
+ICON_MAP = {
+    "connect": "connect.svg",
+    "analyze": "analyze.svg",
+    "formula": "formula.svg",
+    "profile": "profile.svg",
+    "error": "error.svg",
+    "history": "history.svg",
+    "undo": "undo.svg",
+    "save": "save.svg",
+    "open": "open.svg",
+    "export": "export.svg",
+    "clear": "clear.svg",
+    "send": "send.svg",
+    "stop": "stop.svg",
+    "menu": "menu.svg",
+    "settings": "settings.svg",
+    "info": "info.svg",
+}
+
+# Fallback ikonları (özel ikon bulunamazsa)
+FALLBACK_ICONS = {
+    "connect": QStyle.SP_DriveNetIcon,
+    "analyze": QStyle.SP_FileDialogDetailedView,
+    "formula": QStyle.SP_DialogApplyButton,
+    "profile": QStyle.SP_FileDialogContentsView,
+    "error": QStyle.SP_MessageBoxWarning,
+    "history": QStyle.SP_FileDialogInfoView,
+    "undo": QStyle.SP_ArrowBack,
+    "save": QStyle.SP_DialogSaveButton,
+    "open": QStyle.SP_DialogOpenButton,
+    "export": QStyle.SP_FileDialogStart,
+    "clear": QStyle.SP_TrashIcon,
+    "send": QStyle.SP_ArrowRight,
+    "stop": QStyle.SP_MediaStop,
+    "menu": QStyle.SP_TitleBarMenuButton,
+    "settings": QStyle.SP_ComputerIcon,
+    "info": QStyle.SP_MessageBoxInformation,
+}
+
+
+def get_icon(name: str, widget: QWidget = None) -> QIcon:
+    """İkon adına göre QIcon döndürür.
+
+    Args:
+        name: İkon adı (örn: "connect", "save").
+        widget: Fallback ikonu için widget (opsiyonel).
+
+    Returns:
+        QIcon nesnesi.
+    """
+    if name in ICON_MAP:
+        icon_path = ICONS_DIR / ICON_MAP[name]
+        if icon_path.exists():
+            return QIcon(str(icon_path))
+
+    # Fallback: Qt standart ikonu
+    if widget and name in FALLBACK_ICONS:
+        return widget.style().standardIcon(FALLBACK_ICONS[name])
+
+    return QIcon()
+
+
+def get_icon_path(name: str) -> str:
+    """İkon dosya yolunu döndürür.
+
+    Args:
+        name: İkon adı.
+
+    Returns:
+        Dosya yolu veya boş string.
+    """
+    if name in ICON_MAP:
+        icon_path = ICONS_DIR / ICON_MAP[name]
+        if icon_path.exists():
+            return str(icon_path)
+    return ""

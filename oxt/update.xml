@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<description xmlns="http://openoffice.org/extensions/update/2006"
+    xmlns:d="http://openoffice.org/extensions/description/2006"
+    xmlns:xlink="http://www.w3.org/1999/xlink">
+
+    <identifier value="com.aras.librecalc.ai"/>
+    <version value="1.0.0"/>
+
+    <update-download>
+        <src xlink:href="https://github.com/palamut62/libre_calc_ai_addon/releases/download/v1.0.0/libre_calc_ai-1.0.0.oxt"/>
+    </update-download>
+
+</description>

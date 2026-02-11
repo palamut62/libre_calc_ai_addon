@@ -19,6 +19,7 @@ An intelligent, modern AI assistant sidebar for LibreOffice Calc, designed with 
     *   Automatic model fetching from Ollama server
     *   Tool support detection with visual warnings
     *   Fallback mode for models without tool support
+*   **Gemini (Google)**: Google Gemini models via API.
 
 ### Spreadsheet Integration
 *   **Live Selection Tracking**: The status bar instantly reflects your selection (`A1`, `A1:B5`, or `A1, C5`).
@@ -129,6 +130,15 @@ localc my_file.ods
 
 Or search for "LibreCalc AI Assistant" in your application menu.
 
+### Option 4: OXT Extension (LibreOffice Add-on)
+
+You can also install ArasAI as a native LibreOffice extension:
+
+1. Build the extension: `cd oxt && python build.py`
+2. Install the generated `.oxt` file via **Tools > Extension Manager** in LibreOffice
+3. Restart LibreOffice
+4. Access ArasAI from the **Tools > Macros** menu or assign it to a toolbar button
+
 ### Settings
 
 Access **File > Settings** to configure:
@@ -184,10 +194,14 @@ libre_calc_ai_addon/
 │   ├── ollama_provider.py    # Local Ollama support
 │   ├── tool_definitions.py   # Function calling schemas
 │   └── prompt_templates.py
+├── oxt/
+│   ├── interface.py          # LibreOffice Script Provider bridge
+│   └── CalcAI/              # Bundled application for OXT
 └── ui/
     ├── main_window.py        # Main application window
     ├── chat_widget.py        # Chat interface
     ├── settings_dialog.py    # Settings UI
+    ├── help_dialog.py        # Help & user guide dialog
     ├── styles.py             # Theme definitions
     └── i18n.py               # Translations (TR/EN)
 ```
@@ -195,6 +209,11 @@ libre_calc_ai_addon/
 ## 🤝 Contributing
 
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+
+## 👤 Developer
+
+*   **GitHub**: [github.com/palamut62](https://github.com/palamut62)
+*   **X (Twitter)**: [x.com/palamut62](https://x.com/palamut62)
 
 ## 📄 License
 
