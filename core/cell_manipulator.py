@@ -1,7 +1,8 @@
 """Hücre manipülatörü - LibreOffice Calc hücrelerine veri yazma ve biçimlendirme."""
 
 import logging
-import re
+
+from .address_utils import parse_address
 
 logger = logging.getLogger(__name__)
 
@@ -18,36 +19,6 @@ class CellManipulator:
         """
         self.bridge = bridge
 
-    @staticmethod
-    def _parse_address(address: str) -> tuple:
-        """
-        Hücre adresini sütun ve satır indekslerine dönüştürür.
-
-        Args:
-            address: Hücre adresi (ör. "A1", "AB10").
-
-        Returns:
-            (sütun_indeksi, satır_indeksi) tuple (0 tabanlı).
-
-        Raises:
-            ValueError: Geçersiz hücre adresi.
-        """
-        address = address.strip().upper()
-        match = re.match(r'^([A-Z]+)(\d+)$', address)
-        if not match:
-            raise ValueError(f"Geçersiz hücre adresi: '{address}'")
-
-        col_str = match.group(1)
-        row_num = int(match.group(2))
-
-        col_index = 0
-        for char in col_str:
-            col_index = col_index * 26 + (ord(char) - ord('A') + 1)
-        col_index -= 1
-
-        row_index = row_num - 1
-        return col_index, row_index
-
     def _get_cell(self, address: str):
         """
         Adrese göre hücre nesnesini döndürür.
@@ -58,7 +29,7 @@ class CellManipulator:
         Returns:
             Hücre nesnesi.
         """
-        col, row = self._parse_address(address)
+        col, row = parse_address(address)
         sheet = self.bridge.get_active_sheet()
         return self.bridge.get_cell(sheet, col, row)
 

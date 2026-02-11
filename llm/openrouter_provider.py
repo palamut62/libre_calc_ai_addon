@@ -2,6 +2,8 @@
 
 import json
 import logging
+import re
+import time
 from typing import Generator
 
 import httpx
@@ -10,6 +12,10 @@ from config.settings import Settings
 from .base_provider import BaseLLMProvider
 
 logger = logging.getLogger(__name__)
+
+# Rate limit için sabitler
+MAX_RETRIES = 3
+DEFAULT_RETRY_DELAY = 30  # saniye
 
 
 class OpenRouterProvider(BaseLLMProvider):
@@ -54,7 +60,14 @@ class OpenRouterProvider(BaseLLMProvider):
             payload["tool_choice"] = "auto"
         return payload
 
-    def _handle_error_response(self, response: httpx.Response) -> None:
+    def _parse_retry_delay(self, response_text: str) -> float:
+        """Hata mesajından retry süresini çıkarır."""
+        match = re.search(r"retry.{0,10}([\d.]+)\s*s", response_text, re.IGNORECASE)
+        if match:
+            return float(match.group(1))
+        return DEFAULT_RETRY_DELAY
+
+    def _handle_error_response(self, response: httpx.Response, raise_on_429: bool = True) -> None:
         """HTTP hata yanıtlarını uygun istisna mesajlarıyla yükseltir."""
         status = response.status_code
         try:
@@ -66,7 +79,9 @@ class OpenRouterProvider(BaseLLMProvider):
         if status == 401:
             raise PermissionError(f"OpenRouter kimlik doğrulama hatası: {detail}")
         elif status == 429:
-            raise RuntimeError(f"OpenRouter istek limiti aşıldı: {detail}")
+            if raise_on_429:
+                raise RuntimeError(f"OpenRouter istek limiti aşıldı: {detail}")
+            return  # Rate limit için retry mekanizması tarafından işlenecek
         elif status >= 500:
             raise ConnectionError(f"OpenRouter sunucu hatası ({status}): {detail}")
         else:
@@ -100,6 +115,12 @@ class OpenRouterProvider(BaseLLMProvider):
             RuntimeError: İstek limiti aşıldıysa veya diğer API hataları.
             ConnectionError: Sunucu hatası veya bağlantı sorunu.
         """
+        return self._do_chat_completion(messages, tools, retry_count=0)
+
+    def _do_chat_completion(
+        self, messages: list[dict], tools: list[dict] | None, retry_count: int
+    ) -> dict:
+        """İç chat completion metodu - rate limit retry desteği ile."""
         if not self._api_key:
             raise PermissionError("OpenRouter API anahtarı ayarlanmamış")
 
@@ -115,6 +136,18 @@ class OpenRouterProvider(BaseLLMProvider):
             raise ConnectionError(f"OpenRouter'a bağlanılamadı: {exc}") from exc
         except httpx.TimeoutException as exc:
             raise ConnectionError(f"OpenRouter isteği zaman aşımına uğradı: {exc}") from exc
+
+        # Rate limit handling (429)
+        if response.status_code == 429:
+            if retry_count >= MAX_RETRIES:
+                self._handle_error_response(response)
+            retry_delay = self._parse_retry_delay(response.text)
+            logger.warning(
+                "OpenRouter rate limit aşıldı. %d saniye sonra tekrar denenecek (deneme %d/%d)",
+                int(retry_delay), retry_count + 1, MAX_RETRIES
+            )
+            time.sleep(retry_delay)
+            return self._do_chat_completion(messages, tools, retry_count + 1)
 
         if response.status_code != 200:
             self._handle_error_response(response)
@@ -203,3 +236,9 @@ class OpenRouterProvider(BaseLLMProvider):
         """
         self._model = model_name
         logger.info("OpenRouter modeli değiştirildi: %s", model_name)
+
+    def close(self) -> None:
+        """HTTP client'ı kapatır."""
+        if self._client:
+            self._client.close()
+            self._client = None

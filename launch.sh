@@ -3,6 +3,10 @@
 # LibreOffice Calc'ı dinleme modunda başlatır ve AI asistanını açar.
 # Kullanım: ./launch.sh [dosya.ods]
 
+LOG="$HOME/.librecalc_ai_launcher.log"
+exec >>"$LOG" 2>&1
+echo "=== $(date) ==="
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/venv"
 LO_PORT=2002
@@ -25,13 +29,24 @@ if [ "$LO_RUNNING" = false ]; then
     LO_PID=$!
 
     echo "LibreOffice hazırlanıyor..."
-    sleep 5
+    sleep 3
 fi
 
 # Virtual environment'ı aktive et
 echo "AI Asistanı başlatılıyor..."
+PY_BIN=""
 if [ -d "$VENV_DIR" ]; then
     source "$VENV_DIR/bin/activate"
+    if [ -x "$VENV_DIR/bin/python" ]; then
+        PY_BIN="$VENV_DIR/bin/python"
+    fi
+fi
+
+if [ -z "$PY_BIN" ]; then
+    PY_BIN="$(command -v python3)"
+fi
+if [ -z "$PY_BIN" ]; then
+    PY_BIN="$(command -v python)"
 fi
 
 # UNO Python yolunu PYTHONPATH'e ekle (venv sistem paketlerini göremez)
@@ -46,7 +61,11 @@ echo "UNO yolu ayarlandı: $UNO_PATHS"
 export LO_CONNECT_TYPE="socket"
 
 cd "$SCRIPT_DIR"
-python main.py &
+if [ -z "$PY_BIN" ]; then
+    echo "Python bulunamadı. Lütfen python3 yükleyin."
+    exit 1
+fi
+$PY_BIN main.py &
 AI_PID=$!
 
 echo ""

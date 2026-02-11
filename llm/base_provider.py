@@ -61,3 +61,19 @@ class BaseLLMProvider(ABC):
         Args:
             model_name: Kullanılacak model ismi.
         """
+
+    def close(self) -> None:
+        """Kaynakları serbest bırakır (HTTP client vb.).
+
+        Alt sınıflar gerektiğinde override edebilir.
+        """
+        pass
+
+    def __enter__(self):
+        """Context manager desteği."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager çıkışında close() çağırır."""
+        self.close()
+        return False

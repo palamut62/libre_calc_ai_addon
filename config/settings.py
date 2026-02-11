@@ -1,9 +1,13 @@
 """Konfigürasyon yönetimi - .env dosyasından ayarları okur ve yönetir."""
 
-import os
 import json
+import logging
+import os
 from pathlib import Path
+
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 
 class Settings:
@@ -34,13 +38,17 @@ class Settings:
             "openrouter_api_key": "",
             "openrouter_base_url": "https://openrouter.ai/api/v1",
             "openrouter_default_model": "anthropic/claude-3.5-sonnet",
+            # Gemini
+            "gemini_api_key": "",
+            "gemini_base_url": "https://generativelanguage.googleapis.com/v1beta",
+            "gemini_default_model": "gemini-1.5-flash",
             # Ollama
             "ollama_base_url": "http://localhost:11434",
             "ollama_default_model": "llama3.1",
             # LLM Parametreleri
             "llm_temperature": 0.7,
             "llm_max_tokens": 4096,
-            "llm_provider": "openrouter",  # "openrouter" veya "ollama"
+            "llm_provider": "openrouter",  # "openrouter", "ollama", "gemini"
             # LibreOffice
             "libreoffice_host": "localhost",
             "libreoffice_port": 2002,
@@ -49,6 +57,10 @@ class Settings:
             "ui_language": "tr",
             "openrouter_models": [],
             "ollama_models": [],
+            "gemini_models": [],
+            "openrouter_model_prices": {},
+            "ollama_model_prices": {},
+            "logging_enabled": True,
         }
 
         # Ayarları yükle
@@ -62,6 +74,9 @@ class Settings:
             "OPENROUTER_API_KEY": "openrouter_api_key",
             "OPENROUTER_BASE_URL": "openrouter_base_url",
             "OPENROUTER_DEFAULT_MODEL": "openrouter_default_model",
+            "GEMINI_API_KEY": "gemini_api_key",
+            "GEMINI_BASE_URL": "gemini_base_url",
+            "GEMINI_DEFAULT_MODEL": "gemini_default_model",
             "OLLAMA_BASE_URL": "ollama_base_url",
             "OLLAMA_DEFAULT_MODEL": "ollama_default_model",
             "LLM_TEMPERATURE": "llm_temperature",
@@ -90,8 +105,8 @@ class Settings:
                 with open(self._config_file, "r") as f:
                     saved = json.load(f)
                 self._settings.update(saved)
-            except (json.JSONDecodeError, IOError):
-                pass
+            except (json.JSONDecodeError, IOError) as e:
+                logger.warning("Ayarlar dosyası okunamadı: %s", e)
 
     def save(self):
         """Mevcut ayarları dosyaya kaydet."""
@@ -130,6 +145,18 @@ class Settings:
         return self._settings["openrouter_default_model"]
 
     @property
+    def gemini_api_key(self) -> str:
+        return self._settings["gemini_api_key"]
+
+    @property
+    def gemini_base_url(self) -> str:
+        return self._settings["gemini_base_url"]
+
+    @property
+    def gemini_model(self) -> str:
+        return self._settings["gemini_default_model"]
+
+    @property
     def ollama_base_url(self) -> str:
         return self._settings["ollama_base_url"]
 
@@ -151,8 +178,8 @@ class Settings:
 
     @provider.setter
     def provider(self, value: str):
-        if value not in ("openrouter", "ollama"):
-            raise ValueError("Provider 'openrouter' veya 'ollama' olmalıdır")
+        if value not in ("openrouter", "ollama", "gemini"):
+            raise ValueError("Provider 'openrouter', 'ollama' veya 'gemini' olmalıdır")
         self._settings["llm_provider"] = value
 
     @property
@@ -198,3 +225,35 @@ class Settings:
     @ollama_models.setter
     def ollama_models(self, value: list):
         self._settings["ollama_models"] = value
+
+    @property
+    def gemini_models(self) -> list:
+        return self._settings.get("gemini_models", [])
+
+    @gemini_models.setter
+    def gemini_models(self, value: list):
+        self._settings["gemini_models"] = value
+
+    @property
+    def openrouter_model_prices(self) -> dict:
+        return self._settings.get("openrouter_model_prices", {})
+
+    @openrouter_model_prices.setter
+    def openrouter_model_prices(self, value: dict):
+        self._settings["openrouter_model_prices"] = value
+
+    @property
+    def ollama_model_prices(self) -> dict:
+        return self._settings.get("ollama_model_prices", {})
+
+    @ollama_model_prices.setter
+    def ollama_model_prices(self, value: dict):
+        self._settings["ollama_model_prices"] = value
+
+    @property
+    def logging_enabled(self) -> bool:
+        return bool(self._settings.get("logging_enabled", True))
+
+    @logging_enabled.setter
+    def logging_enabled(self, value: bool):
+        self._settings["logging_enabled"] = bool(value)

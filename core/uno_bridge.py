@@ -2,8 +2,9 @@
 
 import logging
 import os
-import re
 import time
+
+from .address_utils import index_to_column, parse_range_string
 
 try:
     import uno
@@ -188,78 +189,10 @@ class LibreOfficeBridge:
         Returns:
             Hücre aralığı nesnesi.
         """
-        start, end = self.parse_range_string(range_str)
+        start, end = parse_range_string(range_str)
         return sheet.getCellRangeByPosition(
             start[0], start[1], end[0], end[1]
         )
-
-    @staticmethod
-    def parse_range_string(range_str: str) -> tuple:
-        """
-        Hücre aralığı dizesini sütun/satır indekslerine dönüştürür.
-
-        Args:
-            range_str: "A1:D10" veya "A1" formatında aralık dizesi.
-
-        Returns:
-            ((başlangıç_sütun, başlangıç_satır), (bitiş_sütun, bitiş_satır)) tuple.
-            Tek hücre için her iki tuple aynıdır.
-
-        Raises:
-            ValueError: Geçersiz aralık formatı.
-        """
-        range_str = range_str.strip().upper()
-
-        pattern = r'^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$'
-        match = re.match(pattern, range_str)
-        if not match:
-            raise ValueError(f"Geçersiz hücre aralığı formatı: '{range_str}'")
-
-        start_col = LibreOfficeBridge._column_to_index(match.group(1))
-        start_row = int(match.group(2)) - 1
-
-        if match.group(3) is not None:
-            end_col = LibreOfficeBridge._column_to_index(match.group(3))
-            end_row = int(match.group(4)) - 1
-        else:
-            end_col = start_col
-            end_row = start_row
-
-        return (start_col, start_row), (end_col, end_row)
-
-    @staticmethod
-    def _column_to_index(col_str: str) -> int:
-        """
-        Sütun harfini 0 tabanlı indekse dönüştürür.
-
-        Args:
-            col_str: Sütun harfi (ör. "A", "AB").
-
-        Returns:
-            0 tabanlı sütun indeksi.
-        """
-        result = 0
-        for char in col_str.upper():
-            result = result * 26 + (ord(char) - ord('A') + 1)
-        return result - 1
-
-    @staticmethod
-    def _index_to_column(index: int) -> str:
-        """
-        0 tabanlı sütun indeksini harf karşılığına dönüştürür.
-
-        Args:
-            index: 0 tabanlı sütun indeksi.
-
-        Returns:
-            Sütun harfi (ör. "A", "AB").
-        """
-        result = ""
-        index += 1
-        while index > 0:
-            index, remainder = divmod(index - 1, 26)
-            result = chr(ord('A') + remainder) + result
-        return result
 
     @classmethod
     def get_selection_address(cls, selection) -> str:
@@ -279,37 +212,63 @@ class LibreOfficeBridge:
             # Tekil hücre veya aralık
             if hasattr(selection, "getCellAddress"):
                 addr = selection.getCellAddress()
-                col = cls._index_to_column(addr.Column)
+                col = index_to_column(addr.Column)
                 return f"{col}{addr.Row + 1}"
 
             if hasattr(selection, "getRangeAddress"):
                 addr = selection.getRangeAddress()
-                start_col = cls._index_to_column(addr.StartColumn)
-                end_col = cls._index_to_column(addr.EndColumn)
+                start_col = index_to_column(addr.StartColumn)
+                end_col = index_to_column(addr.EndColumn)
                 return f"{start_col}{addr.StartRow + 1}:{end_col}{addr.EndRow + 1}"
 
             # Çoklu seçim (SheetCellRanges)
             if hasattr(selection, "getRangeAddresses"):
-                addrs = selection.getRangeAddresses()
-                parts = []
-                # Çok fazla alan seçilirse özet geç
-                if len(addrs) > 3:
-                     return f"Çoklu Seçim ({len(addrs)} alan)"
-
-                for addr in addrs:
-                    start_col = cls._index_to_column(addr.StartColumn)
-                    end_col = cls._index_to_column(addr.EndColumn)
-                    if addr.StartColumn == addr.EndColumn and addr.StartRow == addr.EndRow:
-                         parts.append(f"{start_col}{addr.StartRow + 1}")
-                    else:
-                         parts.append(f"{start_col}{addr.StartRow + 1}:{end_col}{addr.EndRow + 1}")
-                return ", ".join(parts)
+                ranges = cls.get_selection_ranges(selection)
+                if not ranges:
+                    return "Çoklu Seçim"
+                if len(ranges) > 3:
+                    return f"Çoklu Seçim ({len(ranges)} alan)"
+                return ", ".join(ranges)
 
             return "Bilinmeyen Seçim"
 
         except Exception as e:
             logger.error("Seçim adresi alınırken hata: %s", e)
             return "Hata"
+
+    @classmethod
+    def get_selection_ranges(cls, selection) -> list:
+        """Seçimi aralık listesine dönüştürür."""
+        if selection is None:
+            return []
+        try:
+            if hasattr(selection, "getCellAddress"):
+                addr = selection.getCellAddress()
+                col = index_to_column(addr.Column)
+                return [f"{col}{addr.Row + 1}"]
+
+            if hasattr(selection, "getRangeAddress"):
+                addr = selection.getRangeAddress()
+                start_col = index_to_column(addr.StartColumn)
+                end_col = index_to_column(addr.EndColumn)
+                if addr.StartColumn == addr.EndColumn and addr.StartRow == addr.EndRow:
+                    return [f"{start_col}{addr.StartRow + 1}"]
+                return [f"{start_col}{addr.StartRow + 1}:{end_col}{addr.EndRow + 1}"]
+
+            if hasattr(selection, "getRangeAddresses"):
+                addrs = selection.getRangeAddresses()
+                parts = []
+                for addr in addrs:
+                    start_col = index_to_column(addr.StartColumn)
+                    end_col = index_to_column(addr.EndColumn)
+                    if addr.StartColumn == addr.EndColumn and addr.StartRow == addr.EndRow:
+                        parts.append(f"{start_col}{addr.StartRow + 1}")
+                    else:
+                        parts.append(f"{start_col}{addr.StartRow + 1}:{end_col}{addr.EndRow + 1}")
+                return parts
+        except Exception:
+            return []
+        return []
 
     def __enter__(self):
         """Context manager girişi - bağlantıyı açar."""

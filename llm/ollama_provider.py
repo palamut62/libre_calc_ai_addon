@@ -301,3 +301,9 @@ class OllamaProvider(BaseLLMProvider):
         """
         self._model = model_name
         logger.info("Ollama modeli değiştirildi: %s", model_name)
+
+    def close(self) -> None:
+        """HTTP client'ı kapatır."""
+        if self._client:
+            self._client.close()
+            self._client = None

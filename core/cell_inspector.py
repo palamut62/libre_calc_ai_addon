@@ -1,7 +1,8 @@
 """Hücre denetleyici - LibreOffice Calc hücrelerinin detaylı bilgilerini okur."""
 
 import logging
-import re
+
+from .address_utils import parse_address
 
 try:
     from com.sun.star.table.CellContentType import EMPTY, VALUE, TEXT, FORMULA
@@ -26,34 +27,24 @@ class CellInspector:
         self.bridge = bridge
 
     @staticmethod
-    def _parse_address(address: str) -> tuple:
-        """
-        Hücre adresini sütun ve satır indekslerine dönüştürür.
+    def _cell_type_name(cell_type) -> str:
+        """UNO Enum uyumlu hücre tipi ismi döndürür."""
+        if cell_type == EMPTY:
+            return "empty"
+        if cell_type == VALUE:
+            return "value"
+        if cell_type == TEXT:
+            return "text"
+        if cell_type == FORMULA:
+            return "formula"
+        return "unknown"
 
-        Args:
-            address: Hücre adresi (ör. "A1", "AB10").
-
-        Returns:
-            (sütun_indeksi, satır_indeksi) tuple (0 tabanlı).
-
-        Raises:
-            ValueError: Geçersiz hücre adresi.
-        """
-        address = address.strip().upper()
-        match = re.match(r'^([A-Z]+)(\d+)$', address)
-        if not match:
-            raise ValueError(f"Geçersiz hücre adresi: '{address}'")
-
-        col_str = match.group(1)
-        row_num = int(match.group(2))
-
-        col_index = 0
-        for char in col_str:
-            col_index = col_index * 26 + (ord(char) - ord('A') + 1)
-        col_index -= 1
-
-        row_index = row_num - 1
-        return col_index, row_index
+    @staticmethod
+    def _safe_prop(cell, name, default=None):
+        try:
+            return cell.getPropertyValue(name)
+        except Exception:
+            return default
 
     def _get_cell(self, address: str):
         """
@@ -65,7 +56,7 @@ class CellInspector:
         Returns:
             Hücre nesnesi.
         """
-        col, row = self._parse_address(address)
+        col, row = parse_address(address)
         sheet = self.bridge.get_active_sheet()
         return self.bridge.get_cell(sheet, col, row)
 
@@ -87,13 +78,6 @@ class CellInspector:
             cell = self._get_cell(address)
             cell_type = cell.getType()
 
-            type_map = {
-                EMPTY: "empty",
-                VALUE: "value",
-                TEXT: "text",
-                FORMULA: "formula",
-            }
-
             if cell_type == EMPTY:
                 value = None
             elif cell_type == VALUE:
@@ -111,7 +95,7 @@ class CellInspector:
                 "address": address.upper(),
                 "value": value,
                 "formula": formula,
-                "type": type_map.get(cell_type, "unknown"),
+                "type": self._cell_type_name(cell_type),
             }
 
         except Exception as e:
@@ -139,13 +123,6 @@ class CellInspector:
             cell = self._get_cell(address)
             cell_type = cell.getType()
 
-            type_map = {
-                EMPTY: "empty",
-                VALUE: "value",
-                TEXT: "text",
-                FORMULA: "formula",
-            }
-
             if cell_type == EMPTY:
                 value = None
             elif cell_type == VALUE:
@@ -161,10 +138,17 @@ class CellInspector:
                 "address": address.upper(),
                 "value": value,
                 "formula": cell.getFormula(),
-                "formula_local": cell.getPropertyValue("FormulaLocal"),
-                "type": type_map.get(cell_type, "unknown"),
-                "background_color": cell.getPropertyValue("CellBackColor"),
-                "number_format": cell.getPropertyValue("NumberFormat"),
+                "formula_local": self._safe_prop(cell, "FormulaLocal"),
+                "type": self._cell_type_name(cell_type),
+                "background_color": self._safe_prop(cell, "CellBackColor"),
+                "number_format": self._safe_prop(cell, "NumberFormat"),
+                "font_color": self._safe_prop(cell, "CharColor"),
+                "font_size": self._safe_prop(cell, "CharHeight"),
+                "bold": self._safe_prop(cell, "CharWeight"),
+                "italic": self._safe_prop(cell, "CharPosture"),
+                "h_align": self._safe_prop(cell, "HoriJustify"),
+                "v_align": self._safe_prop(cell, "VertJustify"),
+                "wrap_text": self._safe_prop(cell, "IsTextWrapped"),
             }
 
         except Exception as e:
@@ -287,13 +271,6 @@ class CellInspector:
                     cell = sheet.getCellByPosition(col, row)
                     cell_type = cell.getType()
 
-                    type_map = {
-                        EMPTY: "empty",
-                        VALUE: "value",
-                        TEXT: "text",
-                        FORMULA: "formula",
-                    }
-
                     if cell_type == EMPTY:
                         value = None
                     elif cell_type == VALUE:
@@ -313,7 +290,7 @@ class CellInspector:
                         "address": address,
                         "value": value,
                         "formula": formula,
-                        "type": type_map.get(cell_type, "unknown"),
+                        "type": self._cell_type_name(cell_type),
                     })
                 result.append(row_data)
 

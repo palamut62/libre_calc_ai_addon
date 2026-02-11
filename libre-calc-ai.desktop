@@ -4,6 +4,7 @@ Comment=LibreOffice Calc için AI destekli asistan
 Exec=/home/aras/Masaüstü/UYGULAMALARIM/libre_clac_ai_addon/launch.sh
 Icon=libreoffice-calc
 Terminal=false
+Terminal=true
 Type=Application
 Categories=Office;Spreadsheet;
 Keywords=calc;spreadsheet;ai;assistant;

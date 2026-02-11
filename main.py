@@ -63,6 +63,63 @@ def parse_args():
     return parser.parse_args()
 
 
+def setup_window_layout(window, addon_percent: int = 30):
+    """Pencereyi ekranın sağ tarafına konumlandırır ve LibreOffice'i sola yerleştirir.
+
+    Args:
+        window: QMainWindow nesnesi.
+        addon_percent: Eklenti için ekran genişliğinin yüzdesi (varsayılan %30).
+    """
+    import subprocess
+    from PyQt5.QtWidgets import QDesktopWidget
+    from PyQt5.QtCore import QTimer
+
+    desktop = QDesktopWidget()
+    screen = desktop.availableGeometry(desktop.primaryScreen())
+
+    screen_width = screen.width()
+    screen_height = screen.height()
+
+    # Eklenti genişliği (%30)
+    addon_width = int(screen_width * addon_percent / 100)
+
+    # LibreOffice genişliği (%70)
+    lo_width = screen_width - addon_width
+
+    # Eklenti penceresini sağa konumlandır
+    window.setGeometry(lo_width, 0, addon_width, screen_height)
+
+    # LibreOffice penceresini sola konumlandır (wmctrl ile)
+    def position_libreoffice():
+        try:
+            # wmctrl var mı kontrol et
+            result = subprocess.run(["which", "wmctrl"], capture_output=True, text=True)
+            if result.returncode != 0:
+                return
+
+            # LibreOffice penceresini bul
+            result = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True)
+            for line in result.stdout.splitlines():
+                if "calc" in line.lower() or "libreoffice" in line.lower():
+                    wid = line.split()[0]
+                    # Maximize'ı kaldır
+                    subprocess.run([
+                        "wmctrl", "-i", "-r", wid,
+                        "-b", "remove,maximized_vert,maximized_horz"
+                    ], capture_output=True)
+                    # Konumlandır: x=0, y=0, genişlik=lo_width, yükseklik=screen_height
+                    subprocess.run([
+                        "wmctrl", "-i", "-r", wid,
+                        "-e", f"0,0,0,{lo_width},{screen_height}"
+                    ], capture_output=True)
+                    break
+        except Exception:
+            pass
+
+    # Biraz bekleyip LibreOffice'i konumlandır
+    QTimer.singleShot(500, position_libreoffice)
+
+
 def main():
     """Uygulamayı başlatır."""
     args = parse_args()
@@ -80,17 +137,24 @@ def main():
     if args.provider:
         settings.provider = args.provider
 
+    if not settings.logging_enabled:
+        logging.disable(logging.CRITICAL)
+
     # High DPI desteği (QApplication oluşturulmadan önce ayarlanmalı)
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
 
     # Qt uygulamasını oluştur
     app = QApplication(sys.argv)
-    app.setApplicationName("Aras")
+    app.setApplicationName("ArasAI")
     app.setOrganizationName("ArasAI")
 
-    # Ana pencereyi oluştur ve göster
+    # Ana pencereyi oluştur
     window = MainWindow(skip_lo_connect=args.no_lo)
+
+    # Pencereleri yan yana konumlandır (LibreOffice %70 sol, ArasAI %30 sağ)
+    setup_window_layout(window, addon_percent=30)
+
     window.show()
 
     logger.info("Uygulama hazır.")

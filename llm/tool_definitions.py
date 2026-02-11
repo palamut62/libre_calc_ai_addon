@@ -395,6 +395,9 @@ TOOLS = [
 ]
 
 
+from core.uno_bridge import LibreOfficeBridge
+
+
 class ToolDispatcher:
     """Araç çağrılarını ilgili core modül metodlarına yönlendirir.
 
@@ -402,7 +405,7 @@ class ToolDispatcher:
     uygun core modül metodunu çağırır ve sonucu döndürür.
     """
 
-    def __init__(self, cell_inspector, cell_manipulator, sheet_analyzer, error_detector):
+    def __init__(self, cell_inspector, cell_manipulator, sheet_analyzer, error_detector, change_logger=None):
         """Dispatcher'ı core modül nesneleriyle başlatır.
 
         Args:
@@ -415,6 +418,7 @@ class ToolDispatcher:
         self._cell_manipulator = cell_manipulator
         self._sheet_analyzer = sheet_analyzer
         self._error_detector = error_detector
+        self._change_logger = change_logger
 
         self._dispatch_map = {
             "read_cell_range": self._read_cell_range,
@@ -436,6 +440,46 @@ class ToolDispatcher:
             "get_cell_precedents": self._get_cell_precedents,
             "get_cell_dependents": self._get_cell_dependents,
         }
+
+    def _log_change(self, summary: str, cells: list | None = None, undoable: bool = True, partial: bool = False):
+        if self._change_logger:
+            self._change_logger(summary, cells=cells, undoable=undoable, partial=partial)
+
+    def _snapshot_range(self, range_name: str, max_cells: int = 500) -> tuple[list | None, bool]:
+        """Range için hücre snapshot alır."""
+        if ":" in range_name:
+            start, end = LibreOfficeBridge.parse_range_string(range_name)
+        else:
+            start = end = LibreOfficeBridge.parse_range_string(range_name)[0]
+
+        row_count = end[1] - start[1] + 1
+        col_count = end[0] - start[0] + 1
+        total = row_count * col_count
+        if total > max_cells:
+            return None, True
+
+        cells = []
+        for row in range(start[1], end[1] + 1):
+            for col in range(start[0], end[0] + 1):
+                addr = f"{LibreOfficeBridge._index_to_column(col)}{row + 1}"
+                details = self._cell_inspector.get_cell_details(addr)
+                cells.append({
+                    "address": addr,
+                    "type": details.get("type"),
+                    "formula": details.get("formula"),
+                    "value": details.get("value"),
+                    "background_color": details.get("background_color"),
+                    "number_format": details.get("number_format"),
+                    "font_color": details.get("font_color"),
+                    "font_size": details.get("font_size"),
+                    "bold": details.get("bold"),
+                    "italic": details.get("italic"),
+                    "h_align": details.get("h_align"),
+                    "v_align": details.get("v_align"),
+                    "wrap_text": details.get("wrap_text"),
+                })
+
+        return cells, False
 
     def dispatch(self, tool_name: str, arguments: dict) -> str:
         """Araç çağrısını ilgili metoda yönlendirir ve sonucu string olarak döndürür.
@@ -466,12 +510,18 @@ class ToolDispatcher:
 
     def _write_formula(self, args: dict):
         """Hücreye formül veya değer yazar."""
-        return self._cell_manipulator.write_formula(args["cell"], args["formula"])
+        cell = args["cell"]
+        cells, _too_large = self._snapshot_range(cell, max_cells=1)
+        result = self._cell_manipulator.write_formula(cell, args["formula"])
+        self._log_change(f"Hücre yazıldı: {cell}", cells=cells, undoable=True, partial=False)
+        return result
 
     def _set_cell_style(self, args: dict):
         """Hücre stilini ayarlar."""
         args = dict(args)  # orijinali değiştirme
         range_name = args.pop("range_name")
+
+        cells, too_large = self._snapshot_range(range_name, max_cells=300)
 
         # Renk dönüşümü (hex string -> int)
         for color_key in ("bg_color", "font_color", "border_color"):
@@ -480,9 +530,15 @@ class ToolDispatcher:
 
         # Aralık mı tekil hücre mi?
         if ":" in range_name:
-            return self._cell_manipulator.set_range_style(range_name, **args)
+            result = self._cell_manipulator.set_range_style(range_name, **args)
         else:
-            return self._cell_manipulator.set_cell_style(range_name, **args)
+            result = self._cell_manipulator.set_cell_style(range_name, **args)
+
+        if too_large:
+            self._log_change(f"Stil uygulandı: {range_name}", cells=None, undoable=False, partial=True)
+        else:
+            self._log_change(f"Stil uygulandı: {range_name}", cells=cells, undoable=True, partial=True)
+        return result
 
     @staticmethod
     def _parse_color(color_str: str) -> int:
@@ -515,47 +571,62 @@ class ToolDispatcher:
         range_name = args.get("range_name")
         center = args.get("center", True)
         self._cell_manipulator.merge_cells(range_name, center)
+        self._log_change(f"Hücreler birleştirildi: {range_name}", cells=None, undoable=False)
         return f"{range_name} aralığı birleştirildi."
 
     def _set_column_width(self, args: dict):
         """Sütun genişliğini ayarlar."""
-        return self._cell_manipulator.set_column_width(
+        result = self._cell_manipulator.set_column_width(
             args["col_letter"], args["width_mm"]
         )
+        self._log_change(f"Sütun genişliği ayarlandı: {args['col_letter']}", cells=None, undoable=False)
+        return result
 
     def _set_row_height(self, args: dict):
         """Satır yüksekliğini ayarlar."""
-        return self._cell_manipulator.set_row_height(
+        result = self._cell_manipulator.set_row_height(
             args["row_num"], args["height_mm"]
         )
+        self._log_change(f"Satır yüksekliği ayarlandı: {args['row_num']}", cells=None, undoable=False)
+        return result
 
     def _insert_rows(self, args: dict):
         """Satır ekler."""
-        return self._cell_manipulator.insert_rows(
+        result = self._cell_manipulator.insert_rows(
             args["row_num"], args.get("count", 1)
         )
+        self._log_change(f"Satır eklendi: {args['row_num']} (+{args.get('count', 1)})", cells=None, undoable=False)
+        return result
 
     def _insert_columns(self, args: dict):
         """Sütun ekler."""
-        return self._cell_manipulator.insert_columns(
+        result = self._cell_manipulator.insert_columns(
             args["col_letter"], args.get("count", 1)
         )
+        self._log_change(f"Sütun eklendi: {args['col_letter']} (+{args.get('count', 1)})", cells=None, undoable=False)
+        return result
 
     def _delete_rows(self, args: dict):
         """Satır siler."""
-        return self._cell_manipulator.delete_rows(
+        result = self._cell_manipulator.delete_rows(
             args["row_num"], args.get("count", 1)
         )
+        self._log_change(f"Satır silindi: {args['row_num']} (-{args.get('count', 1)})", cells=None, undoable=False)
+        return result
 
     def _delete_columns(self, args: dict):
         """Sütun siler."""
-        return self._cell_manipulator.delete_columns(
+        result = self._cell_manipulator.delete_columns(
             args["col_letter"], args.get("count", 1)
         )
+        self._log_change(f"Sütun silindi: {args['col_letter']} (-{args.get('count', 1)})", cells=None, undoable=False)
+        return result
 
     def _auto_fit_column(self, args: dict):
         """Sütun genişliğini otomatik ayarlar."""
-        return self._cell_manipulator.auto_fit_column(args["col_letter"])
+        result = self._cell_manipulator.auto_fit_column(args["col_letter"])
+        self._log_change(f"Otomatik sütun genişliği: {args['col_letter']}", cells=None, undoable=False)
+        return result
 
     def _get_all_formulas(self, args: dict):
         """Sayfadaki tüm formülleri listeler."""
@@ -578,4 +649,3 @@ class ToolDispatcher:
     def _get_cell_dependents(self, args: dict):
         """Bu hücreye bağımlı olan hücreleri listeler."""
         return self._cell_inspector.get_cell_dependents(args["address"])
-
