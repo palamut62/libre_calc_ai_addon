@@ -40,8 +40,8 @@
 
     <!-- Icon -->
     <icon>
-        <default xlink:href="icons/calcai_42.svg"/>
-        <high-contrast xlink:href="icons/calcai_42.svg"/>
+        <default xlink:href="icons/calcai_42.png"/>
+        <high-contrast xlink:href="icons/calcai_42.png"/>
     </icon>
 
     <!-- Dependencies - LibreOffice 6.0+ -->

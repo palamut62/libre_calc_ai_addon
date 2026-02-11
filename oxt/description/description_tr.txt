@@ -4,19 +4,24 @@ LibreOffice Calc icin yapay zeka destekli akilli asistan:
 
 - Tablo verilerini okuma ve analiz etme
 - Dogal dil ile formul yazma
-- Hucre stili ve bicimlendirme uygulama
+- Hucre stili ve bicimlendirme uygulama (kenarlık, renk, hizalama)
 - Formul hatalarini tespit ve duzeltme
-- Verileriniz hakkinda icerik elde etme
+- Verileriniz hakkinda ozet ve icerik elde etme
+- Grafik ve gorsellemeler olusturma
 
-OpenRouter ve Ollama LLM saglayicilari ile calisir.
+OpenRouter, Google Gemini ve Ollama LLM saglayicilari ile calisir.
 
 Ozellikler:
-- Dogal dil arayuzu
-- 18+ tablo araci
+- Tablo islemleri icin dogal dil arayuzu
+- 18+ tablo araci ve hucre manipulasyonu
+- Google Gemini AI destegi
+- OpenRouter coklu model destegi
 - Karanlik/Aydinlik tema destegi
-- Turkce/Ingilizce arayuz
-- Ollama ile cevrimdisi calisma
+- Turkce/Ingilizce iki dilli arayuz
+- Yerel Ollama ile cevrimdisi calisma
+- Otomatik guncelleme destegi
 
 Gereksinimler:
 - LibreOffice 6.0 veya ustuu
-- Internet baglantisi (OpenRouter icin) veya yerel Ollama sunucusu
+- Python 3.6+
+- Internet baglantisi (OpenRouter/Gemini icin) veya yerel Ollama sunucusu

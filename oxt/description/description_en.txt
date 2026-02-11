@@ -4,19 +4,24 @@ An intelligent AI-powered assistant for LibreOffice Calc that helps you:
 
 - Read and analyze spreadsheet data
 - Write formulas with natural language
-- Apply cell styles and formatting
+- Apply cell styles and formatting (borders, colors, alignment)
 - Detect and fix formula errors
-- Get insights about your data
+- Get insights and summaries about your data
+- Create charts and visualizations
 
-Powered by OpenRouter and Ollama LLM providers.
+Powered by OpenRouter, Google Gemini, and Ollama LLM providers.
 
 Features:
-- Natural language interface
-- 18+ spreadsheet tools
+- Natural language interface for spreadsheet operations
+- 18+ spreadsheet tools with cell manipulation
+- Google Gemini AI support
+- OpenRouter multi-model support
 - Dark/Light theme support
-- Turkish/English interface
-- Works offline with Ollama
+- Turkish/English bilingual interface
+- Works offline with local Ollama instance
+- Automatic update support
 
 Requirements:
 - LibreOffice 6.0 or later
-- Internet connection (for OpenRouter) or local Ollama instance
+- Python 3.6+
+- Internet connection (for OpenRouter/Gemini) or local Ollama instance

@@ -21,8 +21,8 @@
 
     <!-- Publisher information -->
     <publisher>
-        <name xlink:href="https://github.com/aras" lang="en">Aras</name>
-        <name xlink:href="https://github.com/aras" lang="tr">Aras</name>
+        <name xlink:href="https://github.com/palamut62" lang="en">palamut62</name>
+        <name xlink:href="https://github.com/palamut62" lang="tr">palamut62</name>
     </publisher>
 
     <!-- Extension description -->
@@ -31,15 +31,27 @@
         <src xlink:href="description/description_tr.txt" lang="tr"/>
     </extension-description>
 
+    <!-- Registration / License -->
+    <registration>
+        <simple-license accept-by="admin" suppress-on-update="true">
+            <license-text xlink:href="description/license_en.txt" lang="en"/>
+        </simple-license>
+    </registration>
+
     <!-- Icon -->
     <icon>
-        <default xlink:href="icons/calcai_42.svg"/>
-        <high-contrast xlink:href="icons/calcai_42.svg"/>
+        <default xlink:href="icons/calcai_42.png"/>
+        <high-contrast xlink:href="icons/calcai_42.png"/>
     </icon>
 
-    <!-- Dependencies - LibreOffice 4.0+ -->
+    <!-- Dependencies - LibreOffice 6.0+ -->
     <dependencies>
-        <lo:LibreOffice-minimal-version value="4.0" d:name="LibreOffice 4.0"/>
+        <lo:LibreOffice-minimal-version value="6.0" d:name="LibreOffice 6.0"/>
     </dependencies>
+
+    <!-- Update information -->
+    <update-information>
+        <src xlink:href="https://raw.githubusercontent.com/palamut62/libre_calc_ai_addon/main/oxt/update.xml"/>
+    </update-information>
 
 </description>
