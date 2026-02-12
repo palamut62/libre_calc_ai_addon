@@ -32,7 +32,8 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "write_formula",
-            "description": "Belirtilen hücreye metin, sayı veya formül yazar. Düz metin için direkt yaz (ör: 'Toplam'), sayı için sayı yaz (ör: '42'), formül için = ile başlat (ör: '=SUM(A1:A10)'). Birden fazla hücreye yazmak için bu aracı tekrar tekrar çağır.",
+            "description": "Belirtilen hücreye metin, sayı veya formül yazar. Düz metin için direkt yaz (ör: 'Toplam'), sayı için sayı yaz (ör: '42'), formül için = ile başlat (ör: '=SUM(A1:A10)'). Tablo oluştururken tüm başlıkları ve verileri mümkünse tek seferde yaz.",
+
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -53,7 +54,8 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "set_cell_style",
-            "description": "Belirtilen hücre veya aralığa stil ve biçimlendirme uygular",
+            "description": "Belirtilen hücre veya aralığa stil ve biçimlendirme uygular. Genellikle write_formula veya merge_cells işleminden sonra görselleştirme için kullanılır.",
+
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -147,7 +149,8 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "merge_cells",
-            "description": "Belirtilen hücre aralığını birleştirir (merge). Genellikle ana başlıklar için kullanılır.",
+            "description": "Belirtilen hücre aralığını birleştirir (merge). Genellikle ana başlıklar için kullanılır. Bu işlemden sonra write_formula ile başlık metnini yazmayı ve set_cell_style ile stil vermeyi unutma.",
+
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -392,6 +395,269 @@ TOOLS = [
             },
         },
     },
+    # === YENİ CLAUDE EXCEL ÖZELLİKLERİ ===
+    {
+        "type": "function",
+        "function": {
+            "name": "sort_range",
+            "description": "Belirtilen veri aralığını sıralar. Başlık satırı varsa has_header=true olarak belirtin.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_name": {
+                        "type": "string",
+                        "description": "Sıralanacak aralık (ör: A1:D10)",
+                    },
+                    "sort_column": {
+                        "type": "integer",
+                        "description": "Sıralama yapılacak sütun numarası (0 tabanlı, aralık içindeki pozisyon)",
+                    },
+                    "ascending": {
+                        "type": "boolean",
+                        "description": "Artan sıralama (true) veya azalan (false). Varsayılan: true",
+                    },
+                    "has_header": {
+                        "type": "boolean",
+                        "description": "İlk satır başlık mı? Varsayılan: true",
+                    },
+                },
+                "required": ["range_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_auto_filter",
+            "description": "Veri aralığına otomatik filtre uygular veya kaldırır.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_name": {
+                        "type": "string",
+                        "description": "Filtre uygulanacak aralık (ör: A1:D10)",
+                    },
+                    "enable": {
+                        "type": "boolean",
+                        "description": "Filtreyi aç (true) veya kapat (false). Varsayılan: true",
+                    },
+                },
+                "required": ["range_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_conditional_format",
+            "description": "Hücre aralığına koşullu biçimlendirme uygular. Renk skalası, veri çubukları veya değer bazlı renklendirme yapabilir.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_name": {
+                        "type": "string",
+                        "description": "Biçimlendirilecek aralık (ör: A1:A20)",
+                    },
+                    "format_type": {
+                        "type": "string",
+                        "enum": ["color_scale", "data_bar", "value_condition"],
+                        "description": "Biçim tipi: color_scale (renk skalası), data_bar (veri çubuğu), value_condition (değer koşulu)",
+                    },
+                    "condition": {
+                        "type": "string",
+                        "enum": ["greater_than", "less_than", "equal", "between", "contains"],
+                        "description": "Koşul tipi (sadece value_condition için)",
+                    },
+                    "value1": {
+                        "type": "string",
+                        "description": "Birinci değer (karşılaştırma veya between için alt sınır)",
+                    },
+                    "value2": {
+                        "type": "string",
+                        "description": "İkinci değer (sadece between için üst sınır)",
+                    },
+                    "color": {
+                        "type": "string",
+                        "description": "Koşul sağlandığında uygulanacak arka plan rengi (ör: #FF0000 veya red)",
+                    },
+                },
+                "required": ["range_name", "format_type"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_data_validation",
+            "description": "Hücreye veri doğrulama kuralı ekler (dropdown liste, sayı aralığı vb.).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_name": {
+                        "type": "string",
+                        "description": "Doğrulama uygulanacak aralık (ör: A1:A10)",
+                    },
+                    "validation_type": {
+                        "type": "string",
+                        "enum": ["list", "whole_number", "decimal", "date", "text_length"],
+                        "description": "Doğrulama tipi",
+                    },
+                    "values": {
+                        "type": "string",
+                        "description": "Liste için virgülle ayrılmış değerler (ör: 'Evet,Hayır,Belki') veya sayı aralığı için 'min;max' formatında",
+                    },
+                    "error_message": {
+                        "type": "string",
+                        "description": "Geçersiz giriş durumunda gösterilecek hata mesajı",
+                    },
+                },
+                "required": ["range_name", "validation_type", "values"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_sheets",
+            "description": "Çalışma kitabındaki tüm sayfa isimlerini listeler.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "switch_sheet",
+            "description": "Belirtilen sayfaya geçiş yapar (aktif sayfa yapar).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Geçiş yapılacak sayfa adı",
+                    },
+                },
+                "required": ["sheet_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_sheet",
+            "description": "Yeni bir sayfa oluşturur.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Yeni sayfa adı",
+                    },
+                    "position": {
+                        "type": "integer",
+                        "description": "Sayfa pozisyonu (0 tabanlı). Belirtilmezse sona eklenir.",
+                    },
+                },
+                "required": ["sheet_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "rename_sheet",
+            "description": "Sayfanın adını değiştirir.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "old_name": {
+                        "type": "string",
+                        "description": "Mevcut sayfa adı",
+                    },
+                    "new_name": {
+                        "type": "string",
+                        "description": "Yeni sayfa adı",
+                    },
+                },
+                "required": ["old_name", "new_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "copy_range",
+            "description": "Bir hücre aralığını başka bir konuma kopyalar.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source_range": {
+                        "type": "string",
+                        "description": "Kaynak aralık (ör: A1:C10)",
+                    },
+                    "target_cell": {
+                        "type": "string",
+                        "description": "Hedef başlangıç hücresi (ör: E1)",
+                    },
+                },
+                "required": ["source_range", "target_cell"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_chart",
+            "description": "Verilerden grafik oluşturur. Çubuk, çizgi, pasta veya dağılım grafiği desteklenir.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "data_range": {
+                        "type": "string",
+                        "description": "Grafik verileri için aralık (ör: A1:B10)",
+                    },
+                    "chart_type": {
+                        "type": "string",
+                        "enum": ["bar", "line", "pie", "scatter", "column"],
+                        "description": "Grafik tipi: bar (yatay çubuk), column (dikey çubuk), line (çizgi), pie (pasta), scatter (dağılım)",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Grafik başlığı",
+                    },
+                    "position": {
+                        "type": "string",
+                        "description": "Grafiğin yerleştirileceği hücre (ör: E1)",
+                    },
+                    "has_header": {
+                        "type": "boolean",
+                        "description": "İlk satır/sütun etiket mi? Varsayılan: true",
+                    },
+                },
+                "required": ["data_range", "chart_type"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "clear_range",
+            "description": "Belirtilen aralıktaki tüm içerikleri temizler (değerler, formüller).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_name": {
+                        "type": "string",
+                        "description": "Temizlenecek aralık (ör: A1:D10)",
+                    },
+                },
+                "required": ["range_name"],
+            },
+        },
+    },
 ]
 
 
@@ -439,6 +705,18 @@ class ToolDispatcher:
             "get_cell_details": self._get_cell_details,
             "get_cell_precedents": self._get_cell_precedents,
             "get_cell_dependents": self._get_cell_dependents,
+            # Yeni Claude Excel özellikleri
+            "sort_range": self._sort_range,
+            "set_auto_filter": self._set_auto_filter,
+            "set_conditional_format": self._set_conditional_format,
+            "set_data_validation": self._set_data_validation,
+            "list_sheets": self._list_sheets,
+            "switch_sheet": self._switch_sheet,
+            "create_sheet": self._create_sheet,
+            "rename_sheet": self._rename_sheet,
+            "copy_range": self._copy_range,
+            "create_chart": self._create_chart,
+            "clear_range": self._clear_range,
         }
 
     def _log_change(self, summary: str, cells: list | None = None, undoable: bool = True, partial: bool = False):
@@ -499,9 +777,14 @@ class ToolDispatcher:
             result = handler(arguments)
             return json.dumps({"result": result}, ensure_ascii=False, default=str)
         except Exception as exc:
-            logger.error("Araç çalıştırma hatası (%s): %s", tool_name, exc)
+            logger.exception("Araç çalıştırma hatası (%s): %s", tool_name, exc)
             return json.dumps(
-                {"error": f"Araç çalıştırma hatası: {exc}"}, ensure_ascii=False
+                {
+                    "tool": tool_name,
+                    "arguments": arguments,
+                    "error": f"Araç çalıştırma hatası: {exc}",
+                },
+                ensure_ascii=False,
             )
 
     def _read_cell_range(self, args: dict):
@@ -520,6 +803,7 @@ class ToolDispatcher:
         """Hücre stilini ayarlar."""
         args = dict(args)  # orijinali değiştirme
         range_name = args.pop("range_name")
+        number_format = args.pop("number_format", None)
 
         cells, too_large = self._snapshot_range(range_name, max_cells=300)
 
@@ -533,6 +817,17 @@ class ToolDispatcher:
             result = self._cell_manipulator.set_range_style(range_name, **args)
         else:
             result = self._cell_manipulator.set_cell_style(range_name, **args)
+
+        # number_format stil API'sinin değil, ayrı format API'sinin parçası
+        if number_format:
+            if ":" in range_name:
+                start, end = LibreOfficeBridge.parse_range_string(range_name)
+                for row in range(start[1], end[1] + 1):
+                    for col in range(start[0], end[0] + 1):
+                        addr = f"{LibreOfficeBridge._index_to_column(col)}{row + 1}"
+                        self._cell_manipulator.set_number_format(addr, number_format)
+            else:
+                self._cell_manipulator.set_number_format(range_name, number_format)
 
         if too_large:
             self._log_change(f"Stil uygulandı: {range_name}", cells=None, undoable=False, partial=True)
@@ -558,8 +853,8 @@ class ToolDispatcher:
 
     def _get_sheet_summary(self, args: dict):
         """Sayfa özetini döndürür."""
-        sheet_name = args.get("sheet_name")
-        return self._sheet_analyzer.get_summary(sheet_name)
+        # SheetAnalyzer şu an sadece aktif sayfa özetini döndürüyor.
+        return self._sheet_analyzer.get_sheet_summary()
 
     def _detect_and_explain_errors(self, args: dict):
         """Hataları tespit eder ve açıklar."""
@@ -649,3 +944,104 @@ class ToolDispatcher:
     def _get_cell_dependents(self, args: dict):
         """Bu hücreye bağımlı olan hücreleri listeler."""
         return self._cell_inspector.get_cell_dependents(args["address"])
+
+    # === YENİ CLAUDE EXCEL ÖZELLİKLERİ ===
+
+    def _sort_range(self, args: dict):
+        """Aralığı sıralar."""
+        result = self._cell_manipulator.sort_range(
+            args["range_name"],
+            args.get("sort_column", 0),
+            args.get("ascending", True),
+            args.get("has_header", True),
+        )
+        self._log_change(f"Aralık sıralandı: {args['range_name']}", cells=None, undoable=False)
+        return result
+
+    def _set_auto_filter(self, args: dict):
+        """Otomatik filtre uygular."""
+        result = self._cell_manipulator.set_auto_filter(
+            args["range_name"],
+            args.get("enable", True),
+        )
+        self._log_change(f"AutoFilter: {args['range_name']}", cells=None, undoable=False)
+        return result
+
+    def _set_conditional_format(self, args: dict):
+        """Koşullu biçimlendirme uygular."""
+        result = self._cell_manipulator.set_conditional_format(
+            args["range_name"],
+            args["format_type"],
+            args.get("condition"),
+            args.get("value1"),
+            args.get("value2"),
+            args.get("color"),
+        )
+        self._log_change(f"Koşullu biçim: {args['range_name']}", cells=None, undoable=False)
+        return result
+
+    def _set_data_validation(self, args: dict):
+        """Veri doğrulama uygular."""
+        result = self._cell_manipulator.set_data_validation(
+            args["range_name"],
+            args["validation_type"],
+            args["values"],
+            args.get("error_message"),
+        )
+        self._log_change(f"Veri doğrulama: {args['range_name']}", cells=None, undoable=False)
+        return result
+
+    def _list_sheets(self, args: dict):
+        """Sayfa isimlerini listeler."""
+        return self._cell_manipulator.list_sheets()
+
+    def _switch_sheet(self, args: dict):
+        """Sayfaya geçiş yapar."""
+        result = self._cell_manipulator.switch_sheet(args["sheet_name"])
+        self._log_change(f"Sayfa değişti: {args['sheet_name']}", cells=None, undoable=False)
+        return result
+
+    def _create_sheet(self, args: dict):
+        """Yeni sayfa oluşturur."""
+        result = self._cell_manipulator.create_sheet(
+            args["sheet_name"],
+            args.get("position"),
+        )
+        self._log_change(f"Sayfa oluşturuldu: {args['sheet_name']}", cells=None, undoable=False)
+        return result
+
+    def _rename_sheet(self, args: dict):
+        """Sayfayı yeniden adlandırır."""
+        result = self._cell_manipulator.rename_sheet(
+            args["old_name"],
+            args["new_name"],
+        )
+        self._log_change(f"Sayfa yeniden adlandırıldı: {args['old_name']} -> {args['new_name']}", cells=None, undoable=False)
+        return result
+
+    def _copy_range(self, args: dict):
+        """Aralığı kopyalar."""
+        result = self._cell_manipulator.copy_range(
+            args["source_range"],
+            args["target_cell"],
+        )
+        self._log_change(f"Kopyalandı: {args['source_range']} -> {args['target_cell']}", cells=None, undoable=False)
+        return result
+
+    def _create_chart(self, args: dict):
+        """Grafik oluşturur."""
+        result = self._cell_manipulator.create_chart(
+            args["data_range"],
+            args["chart_type"],
+            args.get("title"),
+            args.get("position"),
+            args.get("has_header", True),
+        )
+        self._log_change(f"Grafik oluşturuldu: {args['chart_type']}", cells=None, undoable=False)
+        return result
+
+    def _clear_range(self, args: dict):
+        """Aralığı temizler."""
+        self._cell_manipulator.clear_range(args["range_name"])
+        self._log_change(f"Temizlendi: {args['range_name']}", cells=None, undoable=False)
+        return f"{args['range_name']} aralığı temizlendi."

@@ -60,6 +60,7 @@ class Settings:
             "gemini_models": [],
             "openrouter_model_prices": {},
             "ollama_model_prices": {},
+            "openrouter_free_only": False,
             "logging_enabled": True,
         }
 

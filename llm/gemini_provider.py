@@ -18,6 +18,12 @@ MAX_RETRIES = 3
 DEFAULT_RETRY_DELAY = 30  # saniye
 
 
+def _to_camel_case(snake_str):
+    components = snake_str.split('_')
+    return components[0] + ''.join(x.title() for x in components[1:])
+
+
+
 class GeminiProvider(BaseLLMProvider):
     """Gemini API üzerinden LLM erişimi sağlayan sınıf."""
 
@@ -30,32 +36,106 @@ class GeminiProvider(BaseLLMProvider):
         self._max_tokens = settings.max_tokens
         self._client = httpx.Client(timeout=60.0)
 
+    def _convert_tools_to_gemini_format(self, tools: list[dict]) -> list[dict] | None:
+        """OpenAI tool formatını Gemini formatına çevirir."""
+        if not tools:
+            return None
+
+        declarations = []
+        for tool in tools:
+            if tool.get("type") == "function":
+                func = tool.get("function", {})
+                # OpenAI parametrelerini olduğu gibi alıyoruz
+                # Gemini REST API genellikle standart JSON Schema kabul eder
+                declarations.append(func)
+
+        if not declarations:
+            return None
+
+        return [{"functionDeclarations": declarations}]
+
     def _build_contents(self, messages: list[dict]) -> list[dict]:
         """OpenAI tarzı mesajları Gemini contents'e dönüştürür."""
         contents = []
         system_prefix = ""
+        
+        # Tool call ID -> Function Name haritası (Function Response için gerekli)
+        # Mesajları tarayıp function call'ları bulmamız gerekir.
+        tool_id_to_name = {}
+
+        # İlk geçiş: Tool call ID'lerini topla
+        for m in messages:
+            if m.get("role") == "assistant" and m.get("tool_calls"):
+                for tc in m["tool_calls"]:
+                    if "id" in tc and "function" in tc:
+                        tool_id_to_name[tc["id"]] = tc["function"].get("name")
+
         if messages and messages[0].get("role") == "system":
             system_prefix = messages[0].get("content", "")
 
         for m in messages[1:]:
             role = m.get("role")
             content = m.get("content")
-            if content is None:
+            tool_calls = m.get("tool_calls")
+            
+            if role == "tool":
+                # Function Response
+                tool_call_id = m.get("tool_call_id")
+                func_name = tool_id_to_name.get(tool_call_id)
+                if not func_name:
+                    # İsim bulunamadıysa atla veya logla
+                    continue
+                    
+                # Content JSON ise parse et, değilse string olarak sar
+                response_content = content
+                try:
+                    if isinstance(content, str):
+                        # Basit bir dict içine al, Gemini yapısal veri tercih eder
+                        response_content = {"result": content}
+                except Exception:
+                    response_content = {"result": str(content)}
+
+                contents.append({
+                    "role": "function",
+                    "parts": [{
+                        "functionResponse": {
+                            "name": func_name,
+                            "response": {"name": func_name, "content": response_content}
+                        }
+                    }]
+                })
                 continue
+
             if role == "user":
-                text = content
+                text = content or ""
                 if system_prefix:
-                    text = f"{system_prefix}\n\n{content}"
+                    text = f"{system_prefix}\n\n{text}"
                     system_prefix = ""
                 contents.append({
                     "role": "user",
                     "parts": [{"text": text}],
                 })
+            
             elif role == "assistant":
-                contents.append({
-                    "role": "model",
-                    "parts": [{"text": content}],
-                })
+                parts = []
+                if content:
+                    parts.append({"text": content})
+                
+                if tool_calls:
+                    for tc in tool_calls:
+                        func = tc.get("function", {})
+                        parts.append({
+                            "functionCall": {
+                                "name": func.get("name"),
+                                "args": func.get("arguments") if isinstance(func.get("arguments"), dict) else json.loads(func.get("arguments", "{}"))
+                            }
+                        })
+                
+                if parts:
+                    contents.append({
+                        "role": "model",
+                        "parts": parts,
+                    })
 
         if system_prefix:
             contents.insert(0, {
@@ -103,6 +183,8 @@ class GeminiProvider(BaseLLMProvider):
         if not self._api_key:
             raise PermissionError("Gemini API anahtarı ayarlanmamış")
 
+        gemini_tools = self._convert_tools_to_gemini_format(tools)
+        
         payload = {
             "contents": self._build_contents(messages),
             "generationConfig": {
@@ -110,6 +192,11 @@ class GeminiProvider(BaseLLMProvider):
                 "maxOutputTokens": self._max_tokens,
             },
         }
+
+        if gemini_tools:
+            payload["tools"] = gemini_tools
+            # Tool kullanımı için config: AUTO (model karar verir)
+            payload["toolConfig"] = {"functionCallingConfig": {"mode": "AUTO"}}
 
         url = f"{self._base_url}/models/{self._model}:generateContent"
         response = self._make_request(url, payload)
@@ -119,23 +206,61 @@ class GeminiProvider(BaseLLMProvider):
 
         data = response.json()
         candidates = data.get("candidates", [])
-        content = ""
+        
+        content = None
+        tool_calls = None
+        finish_reason = "stop"
+
         if candidates:
-            parts = candidates[0].get("content", {}).get("parts", [])
-            if parts:
-                content = parts[0].get("text", "")
+            candidate = candidates[0]
+            parts = candidate.get("content", {}).get("parts", [])
+            finish_reason = candidate.get("finishReason", "stop").lower()
+            
+            # Text content
+            texts = [p.get("text") for p in parts if "text" in p]
+            if texts:
+                content = "".join(texts)
+                
+            # Function calls
+            f_calls = [p.get("functionCall") for p in parts if "functionCall" in p]
+            if f_calls:
+                tool_calls = []
+                for i, fc in enumerate(f_calls):
+                    name = fc.get("name")
+                    args = fc.get("args", {})
+                    # Args dict gelmeli, string ise parse etmeye çalışalım
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except:
+                            pass
+                            
+                    tool_calls.append({
+                        "id": f"call_{int(time.time())}_{i}", # Gemini ID dönmez, biz üretelim
+                        "type": "function",
+                        "function": {
+                            "name": name,
+                            "arguments": json.dumps(args, ensure_ascii=False)
+                        }
+                    })
 
         return {
             "content": content,
-            "tool_calls": None,
+            "tool_calls": tool_calls,
             "usage": {},
-            "finish_reason": "stop",
+            "finish_reason": finish_reason,
         }
 
     def stream_completion(self, messages: list[dict], tools: list[dict] | None = None) -> Generator[dict, None, None]:
         """Stream desteklenmiyor; tek parça döndürür."""
-        result = self.chat_completion(messages, tools=None)
-        yield {"content": result.get("content"), "tool_calls": None, "done": True}
+        # Tools parametresini geçiriyoruz
+        result = self.chat_completion(messages, tools=tools)
+        # Eğer tool_calls varsa onları da döndür
+        yield {
+            "content": result.get("content"), 
+            "tool_calls": result.get("tool_calls"), 
+            "done": True
+        }
 
     def _make_get_request(self, url: str, retry_count: int = 0) -> httpx.Response:
         """GET isteği yapar, rate limit durumunda otomatik retry uygular."""

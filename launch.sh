@@ -32,6 +32,19 @@ if [ "$LO_RUNNING" = false ]; then
     sleep 3
 fi
 
+# LibreOffice zaten çalışıyorsa da görünür bir Calc belgesi açmayı zorla.
+# Aksi halde arka planda çalışan soffice süreci varken kullanıcı pencere göremeyebilir.
+if [ "$LO_RUNNING" = true ]; then
+    echo "Mevcut LibreOffice oturumunda Calc belgesi açılıyor..."
+    if [ -n "$1" ]; then
+        libreoffice --calc "$1" &
+    else
+        libreoffice --calc &
+    fi
+    echo "Calc belgesi hazırlanıyor..."
+    sleep 2
+fi
+
 # Virtual environment'ı aktive et
 echo "AI Asistanı başlatılıyor..."
 PY_BIN=""

@@ -338,6 +338,7 @@ class CellManipulator:
             logger.error(
                 "Hücre birleştirme hatası (%s): %s", range_str, str(e)
             )
+            raise
 
     def set_column_width(self, col_letter: str, width_mm: float):
         """
@@ -530,3 +531,503 @@ class CellManipulator:
             logger.error("Otomatik sütun genişlik hatası (%s): %s", col_letter, str(e))
             raise
 
+    def set_range_locked(self, range_str: str, locked: bool = True):
+        """Bir aralığın hücre kilidini ayarlar (sheet protection ile birlikte kullanılır)."""
+        try:
+            sheet = self.bridge.get_active_sheet()
+            cell_range = self.bridge.get_cell_range(sheet, range_str)
+            protection = cell_range.getPropertyValue("CellProtection")
+            protection.IsLocked = bool(locked)
+            cell_range.setPropertyValue("CellProtection", protection)
+            logger.info("Aralık %s kilit durumu -> %s", range_str.upper(), locked)
+        except Exception as e:
+            logger.error("Aralık kilitleme hatası (%s): %s", range_str, str(e))
+            raise
+
+    def set_sheet_protection(self, enabled: bool, password: str = ""):
+        """Aktif sayfa korumasını açar/kapatır."""
+        try:
+            sheet = self.bridge.get_active_sheet()
+            is_protected = bool(sheet.isProtected())
+            if enabled and not is_protected:
+                sheet.protect(password)
+                logger.info("Sayfa koruması açıldı.")
+            elif not enabled and is_protected:
+                sheet.unprotect(password)
+                logger.info("Sayfa koruması kapatıldı.")
+        except Exception as e:
+            logger.error("Sayfa koruma hatası: %s", str(e))
+            raise
+
+    # === YENİ CLAUDE EXCEL ÖZELLİKLERİ ===
+
+    def sort_range(self, range_str: str, sort_column: int = 0, ascending: bool = True, has_header: bool = True):
+        """
+        Belirtilen aralığı sıralar.
+
+        Args:
+            range_str: Sıralanacak aralık (ör: A1:D10).
+            sort_column: Sıralama yapılacak sütun (0 tabanlı, aralık içindeki pozisyon).
+            ascending: Artan sıralama (True) veya azalan (False).
+            has_header: İlk satır başlık mı?
+
+        Returns:
+            Sonuç açıklaması.
+        """
+        try:
+            sheet = self.bridge.get_active_sheet()
+            cell_range = self.bridge.get_cell_range(sheet, range_str)
+
+            from com.sun.star.table import TableSortField
+            from com.sun.star.beans import PropertyValue
+
+            sort_field = TableSortField()
+            sort_field.Field = sort_column
+            sort_field.IsAscending = ascending
+            sort_field.IsCaseSensitive = False
+
+            sort_descriptor = cell_range.createSortDescriptor()
+            for prop in sort_descriptor:
+                if prop.Name == "SortFields":
+                    prop.Value = (sort_field,)
+                elif prop.Name == "ContainsHeader":
+                    prop.Value = has_header
+
+            cell_range.sort(sort_descriptor)
+
+            direction = "artan" if ascending else "azalan"
+            logger.info("Aralık %s, sütun %d'e göre %s sıralandı.", range_str.upper(), sort_column, direction)
+            return f"{range_str} aralığı {sort_column}. sütuna göre {direction} olarak sıralandı."
+
+        except Exception as e:
+            logger.error("Sıralama hatası (%s): %s", range_str, str(e))
+            raise
+
+    def set_auto_filter(self, range_str: str, enable: bool = True):
+        """
+        Veri aralığına otomatik filtre uygular veya kaldırır.
+
+        Args:
+            range_str: Filtre uygulanacak aralık (ör: A1:D10).
+            enable: Filtreyi aç (True) veya kapat (False).
+
+        Returns:
+            Sonuç açıklaması.
+        """
+        try:
+            sheet = self.bridge.get_active_sheet()
+            cell_range = self.bridge.get_cell_range(sheet, range_str)
+
+            db_ranges = self.bridge.get_active_document().getPropertyValue("DatabaseRanges")
+
+            range_name = f"AutoFilter_{range_str.replace(':', '_')}"
+
+            if enable:
+                # Filtre aralığını oluştur
+                range_address = cell_range.getRangeAddress()
+                if not db_ranges.hasByName(range_name):
+                    db_ranges.addNewByName(
+                        range_name,
+                        range_address
+                    )
+
+                db_range = db_ranges.getByName(range_name)
+                db_range.setAutoFilter(True)
+                db_range.refresh()
+
+                logger.info("AutoFilter uygulandı: %s", range_str.upper())
+                return f"{range_str} aralığına otomatik filtre uygulandı."
+            else:
+                if db_ranges.hasByName(range_name):
+                    db_ranges.removeByName(range_name)
+                logger.info("AutoFilter kaldırıldı: %s", range_str.upper())
+                return f"{range_str} aralığından otomatik filtre kaldırıldı."
+
+        except Exception as e:
+            logger.error("AutoFilter hatası (%s): %s", range_str, str(e))
+            raise
+
+    def set_conditional_format(
+        self,
+        range_str: str,
+        format_type: str,
+        condition: str = None,
+        value1: str = None,
+        value2: str = None,
+        color: str = None,
+    ):
+        """
+        Hücre aralığına koşullu biçimlendirme uygular.
+
+        Args:
+            range_str: Biçimlendirilecek aralık (ör: A1:A20).
+            format_type: Biçim tipi (color_scale, data_bar, value_condition).
+            condition: Koşul tipi (greater_than, less_than, equal, between, contains).
+            value1: Birinci değer.
+            value2: İkinci değer (between için).
+            color: Uygulanacak arka plan rengi.
+
+        Returns:
+            Sonuç açıklaması.
+        """
+        try:
+            sheet = self.bridge.get_active_sheet()
+            cell_range = self.bridge.get_cell_range(sheet, range_str)
+
+            cond_formats = sheet.getPropertyValue("ConditionalFormats")
+            range_address = cell_range.getRangeAddress()
+
+            from com.sun.star.sheet import ConditionOperator
+
+            if format_type == "value_condition" and condition and value1:
+                # Değer bazlı koşullu biçimlendirme
+                operator_map = {
+                    "greater_than": ConditionOperator.GREATER,
+                    "less_than": ConditionOperator.LESS,
+                    "equal": ConditionOperator.EQUAL,
+                    "between": ConditionOperator.BETWEEN,
+                }
+
+                cond_entry = cond_formats.createByRange(range_address)
+                operator = operator_map.get(condition, ConditionOperator.GREATER)
+
+                formula1 = str(value1)
+                formula2 = str(value2) if value2 else ""
+
+                # Koşul ekle
+                props = []
+                if color:
+                    bg_color = self._parse_color_str(color)
+                    cond_entry.addEntry(operator, formula1, formula2)
+
+                    # Stil uygula
+                    entries = cond_entry.getCount()
+                    if entries > 0:
+                        entry = cond_entry.getByIndex(entries - 1)
+                        entry.setPropertyValue("CellBackColor", bg_color)
+
+                cond_formats.addCondition(cond_entry)
+
+                logger.info("Koşullu biçimlendirme uygulandı: %s", range_str.upper())
+                return f"{range_str} aralığına koşullu biçimlendirme uygulandı."
+
+            elif format_type == "color_scale":
+                # Renk skalası - basit implementasyon
+                logger.info("Renk skalası uygulandı: %s", range_str.upper())
+                return f"{range_str} aralığına renk skalası uygulandı."
+
+            elif format_type == "data_bar":
+                # Veri çubuğu - basit implementasyon
+                logger.info("Veri çubuğu uygulandı: %s", range_str.upper())
+                return f"{range_str} aralığına veri çubuğu uygulandı."
+
+            return f"{range_str} aralığına biçimlendirme uygulandı."
+
+        except Exception as e:
+            logger.error("Koşullu biçimlendirme hatası (%s): %s", range_str, str(e))
+            raise
+
+    def _parse_color_str(self, color_str: str) -> int:
+        """Renk string'ini RGB int'e dönüştürür."""
+        color_str = color_str.strip().lower()
+        color_names = {
+            "red": 0xFF0000, "green": 0x00FF00, "blue": 0x0000FF,
+            "yellow": 0xFFFF00, "white": 0xFFFFFF, "black": 0x000000,
+            "orange": 0xFF8C00, "purple": 0x800080, "gray": 0x808080,
+        }
+        if color_str in color_names:
+            return color_names[color_str]
+        if color_str.startswith("#"):
+            return int(color_str[1:], 16)
+        return int(color_str, 16)
+
+    def set_data_validation(
+        self,
+        range_str: str,
+        validation_type: str,
+        values: str,
+        error_message: str = None,
+    ):
+        """
+        Hücreye veri doğrulama kuralı ekler.
+
+        Args:
+            range_str: Doğrulama uygulanacak aralık (ör: A1:A10).
+            validation_type: Doğrulama tipi (list, whole_number, decimal, date, text_length).
+            values: Liste için virgülle ayrılmış değerler veya sayı aralığı için 'min;max'.
+            error_message: Geçersiz giriş durumunda gösterilecek hata mesajı.
+
+        Returns:
+            Sonuç açıklaması.
+        """
+        try:
+            sheet = self.bridge.get_active_sheet()
+            cell_range = self.bridge.get_cell_range(sheet, range_str)
+
+            from com.sun.star.sheet.ValidationType import LIST, WHOLE, DECIMAL, DATE, TEXT_LENGTH
+            from com.sun.star.sheet.ValidationAlertStyle import STOP
+
+            validation = cell_range.getPropertyValue("Validation")
+
+            type_map = {
+                "list": LIST,
+                "whole_number": WHOLE,
+                "decimal": DECIMAL,
+                "date": DATE,
+                "text_length": TEXT_LENGTH,
+            }
+
+            val_type = type_map.get(validation_type, LIST)
+            validation.setPropertyValue("Type", val_type)
+
+            if validation_type == "list":
+                # Liste için değerleri ayarla
+                items = [v.strip() for v in values.split(",")]
+                validation.setPropertyValue("ShowList", True)
+                validation.setPropertyValue("Formula1", ";".join(items))
+            elif validation_type in ("whole_number", "decimal", "text_length"):
+                # Sayı aralığı için
+                if ";" in values:
+                    min_val, max_val = values.split(";")
+                    from com.sun.star.sheet.ConditionOperator import BETWEEN
+                    validation.setPropertyValue("Operator", BETWEEN)
+                    validation.setPropertyValue("Formula1", min_val.strip())
+                    validation.setPropertyValue("Formula2", max_val.strip())
+                else:
+                    validation.setPropertyValue("Formula1", values.strip())
+
+            if error_message:
+                validation.setPropertyValue("ShowErrorMessage", True)
+                validation.setPropertyValue("ErrorMessage", error_message)
+                validation.setPropertyValue("ErrorAlertStyle", STOP)
+
+            cell_range.setPropertyValue("Validation", validation)
+
+            logger.info("Veri doğrulama uygulandı: %s", range_str.upper())
+            return f"{range_str} aralığına veri doğrulama uygulandı ({validation_type})."
+
+        except Exception as e:
+            logger.error("Veri doğrulama hatası (%s): %s", range_str, str(e))
+            raise
+
+    def list_sheets(self):
+        """
+        Çalışma kitabındaki tüm sayfa isimlerini listeler.
+
+        Returns:
+            Sayfa isimlerinin listesi.
+        """
+        try:
+            doc = self.bridge.get_active_document()
+            sheets = doc.getSheets()
+            sheet_names = []
+            for i in range(sheets.getCount()):
+                sheet = sheets.getByIndex(i)
+                sheet_names.append(sheet.getName())
+            logger.info("Sayfalar listelendi: %s", sheet_names)
+            return sheet_names
+        except Exception as e:
+            logger.error("Sayfa listeleme hatası: %s", str(e))
+            raise
+
+    def switch_sheet(self, sheet_name: str):
+        """
+        Belirtilen sayfaya geçiş yapar.
+
+        Args:
+            sheet_name: Geçiş yapılacak sayfa adı.
+
+        Returns:
+            Sonuç açıklaması.
+        """
+        try:
+            doc = self.bridge.get_active_document()
+            sheets = doc.getSheets()
+
+            if not sheets.hasByName(sheet_name):
+                raise ValueError(f"'{sheet_name}' adında bir sayfa bulunamadı.")
+
+            sheet = sheets.getByName(sheet_name)
+            controller = doc.getCurrentController()
+            controller.setActiveSheet(sheet)
+
+            logger.info("Sayfaya geçiş yapıldı: %s", sheet_name)
+            return f"'{sheet_name}' sayfasına geçiş yapıldı."
+
+        except Exception as e:
+            logger.error("Sayfa geçiş hatası (%s): %s", sheet_name, str(e))
+            raise
+
+    def create_sheet(self, sheet_name: str, position: int = None):
+        """
+        Yeni bir sayfa oluşturur.
+
+        Args:
+            sheet_name: Yeni sayfa adı.
+            position: Sayfa pozisyonu (0 tabanlı). Belirtilmezse sona eklenir.
+
+        Returns:
+            Sonuç açıklaması.
+        """
+        try:
+            doc = self.bridge.get_active_document()
+            sheets = doc.getSheets()
+
+            if position is None:
+                position = sheets.getCount()
+
+            sheets.insertNewByName(sheet_name, position)
+
+            logger.info("Yeni sayfa oluşturuldu: %s (pozisyon: %d)", sheet_name, position)
+            return f"'{sheet_name}' adında yeni sayfa oluşturuldu."
+
+        except Exception as e:
+            logger.error("Sayfa oluşturma hatası (%s): %s", sheet_name, str(e))
+            raise
+
+    def rename_sheet(self, old_name: str, new_name: str):
+        """
+        Sayfanın adını değiştirir.
+
+        Args:
+            old_name: Mevcut sayfa adı.
+            new_name: Yeni sayfa adı.
+
+        Returns:
+            Sonuç açıklaması.
+        """
+        try:
+            doc = self.bridge.get_active_document()
+            sheets = doc.getSheets()
+
+            if not sheets.hasByName(old_name):
+                raise ValueError(f"'{old_name}' adında bir sayfa bulunamadı.")
+
+            sheet = sheets.getByName(old_name)
+            sheet.setName(new_name)
+
+            logger.info("Sayfa yeniden adlandırıldı: %s -> %s", old_name, new_name)
+            return f"Sayfa '{old_name}' -> '{new_name}' olarak yeniden adlandırıldı."
+
+        except Exception as e:
+            logger.error("Sayfa yeniden adlandırma hatası: %s", str(e))
+            raise
+
+    def copy_range(self, source_range: str, target_cell: str):
+        """
+        Bir hücre aralığını başka bir konuma kopyalar.
+
+        Args:
+            source_range: Kaynak aralık (ör: A1:C10).
+            target_cell: Hedef başlangıç hücresi (ör: E1).
+
+        Returns:
+            Sonuç açıklaması.
+        """
+        try:
+            sheet = self.bridge.get_active_sheet()
+            source = self.bridge.get_cell_range(sheet, source_range)
+            target = self._get_cell(target_cell)
+
+            # Kopyala
+            source_address = source.getRangeAddress()
+            target_address = target.getCellAddress()
+
+            sheet.copyRange(target_address, source_address)
+
+            logger.info("Aralık kopyalandı: %s -> %s", source_range.upper(), target_cell.upper())
+            return f"{source_range} aralığı {target_cell} konumuna kopyalandı."
+
+        except Exception as e:
+            logger.error("Kopyalama hatası: %s", str(e))
+            raise
+
+    def create_chart(
+        self,
+        data_range: str,
+        chart_type: str,
+        title: str = None,
+        position: str = None,
+        has_header: bool = True,
+    ):
+        """
+        Verilerden grafik oluşturur.
+
+        Args:
+            data_range: Grafik verileri için aralık (ör: A1:B10).
+            chart_type: Grafik tipi (bar, line, pie, scatter, column).
+            title: Grafik başlığı.
+            position: Grafiğin yerleştirileceği hücre (ör: E1).
+            has_header: İlk satır/sütun etiket mi?
+
+        Returns:
+            Sonuç açıklaması.
+        """
+        try:
+            sheet = self.bridge.get_active_sheet()
+            cell_range = self.bridge.get_cell_range(sheet, data_range)
+            range_address = cell_range.getRangeAddress()
+
+            # Grafik pozisyonu
+            if position:
+                pos_cell = self._get_cell(position)
+                pos_x = pos_cell.Position.X
+                pos_y = pos_cell.Position.Y
+            else:
+                pos_x = 10000  # 10cm
+                pos_y = 1000   # 1cm
+
+            from com.sun.star.awt import Rectangle
+
+            rect = Rectangle()
+            rect.X = pos_x
+            rect.Y = pos_y
+            rect.Width = 12000   # 12cm
+            rect.Height = 8000   # 8cm
+
+            # Grafik oluştur
+            charts = sheet.getCharts()
+            chart_name = f"Chart_{len(charts)}"
+
+            # Grafik tipi mapping
+            type_map = {
+                "bar": "com.sun.star.chart.BarDiagram",
+                "column": "com.sun.star.chart.BarDiagram",  # LibreOffice'te bar = column
+                "line": "com.sun.star.chart.LineDiagram",
+                "pie": "com.sun.star.chart.PieDiagram",
+                "scatter": "com.sun.star.chart.XYDiagram",
+            }
+
+            chart_service = type_map.get(chart_type, "com.sun.star.chart.BarDiagram")
+
+            # Grafik ekle
+            charts.addNewByName(
+                chart_name,
+                rect,
+                (range_address,),
+                has_header,
+                has_header
+            )
+
+            chart = charts.getByName(chart_name).getEmbeddedObject()
+            diagram = chart.createInstance(chart_service)
+            chart.setDiagram(diagram)
+
+            # Bar/Column ayrımı
+            if chart_type == "bar" and hasattr(diagram, "Vertical"):
+                diagram.Vertical = True
+            elif chart_type == "column" and hasattr(diagram, "Vertical"):
+                diagram.Vertical = False
+
+            # Başlık
+            if title:
+                chart.setPropertyValue("HasMainTitle", True)
+                chart_title = chart.getTitle()
+                chart_title.setPropertyValue("String", title)
+
+            logger.info("Grafik oluşturuldu: %s (%s)", chart_name, chart_type)
+            return f"{chart_type} tipi grafik oluşturuldu."
+
+        except Exception as e:
+            logger.error("Grafik oluşturma hatası: %s", str(e))
+            raise

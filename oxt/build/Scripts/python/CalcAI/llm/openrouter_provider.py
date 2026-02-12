@@ -57,8 +57,30 @@ class OpenRouterProvider(BaseLLMProvider):
         }
         if tools:
             payload["tools"] = tools
-            payload["tool_choice"] = "auto"
+            # Tool gerektiren isteklerde modeli metin yerine tool_call üretmeye zorla.
+            payload["tool_choice"] = "required" if self._needs_tools(messages) else "auto"
         return payload
+
+    @staticmethod
+    def _needs_tools(messages: list[dict]) -> bool:
+        """Son kullanıcı isteği Calc eylemi gerektiriyorsa True döndürür."""
+        last_user = ""
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                last_user = (msg.get("content") or "").lower()
+                break
+        if not last_user:
+            return False
+
+        keywords = (
+            "tablo", "hesap", "hesapla", "formül", "formul", "uygulama",
+            "şablon", "sablon", "sütun", "sutun", "satır", "satir",
+            "birleştir", "birlestir", "renk", "biçim", "bicim", "format",
+            "düzenle", "duzenle", "başlık", "baslik", "hücre", "hucre",
+            "calc", "sayfa", "manning", "hidrolik", "dsi",
+            "oluştur", "olustur", "ekle", "yaz",
+        )
+        return any(k in last_user for k in keywords)
 
     def _parse_retry_delay(self, response_text: str) -> float:
         """Hata mesajından retry süresini çıkarır."""

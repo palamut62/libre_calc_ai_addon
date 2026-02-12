@@ -57,8 +57,50 @@ class OpenRouterProvider(BaseLLMProvider):
         }
         if tools:
             payload["tools"] = tools
-            payload["tool_choice"] = "auto"
+            # Sadece ilk turda tool_call zorla; tool sonucu sonrası auto'ya dön.
+            # Aksi halde model sürekli tool çağırıp döngüye girebilir.
+            force_tool = (
+                self._needs_tools(messages)
+                and not self._has_tool_response_after_last_user(messages)
+            )
+            payload["tool_choice"] = "required" if force_tool else "auto"
         return payload
+
+    @staticmethod
+    def _needs_tools(messages: list[dict]) -> bool:
+        """Son kullanıcı isteği Calc eylemi gerektiriyorsa True döndürür."""
+        last_user = ""
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                last_user = (msg.get("content") or "").lower()
+                break
+        if not last_user:
+            return False
+
+        keywords = (
+            "tablo", "hesap", "hesapla", "formül", "formul", "uygulama",
+            "şablon", "sablon", "sütun", "sutun", "satır", "satir",
+            "birleştir", "birlestir", "renk", "biçim", "bicim", "format",
+            "düzenle", "duzenle", "başlık", "baslik", "hücre", "hucre",
+            "calc", "sayfa", "manning", "hidrolik", "dsi",
+            "oluştur", "olustur", "ekle", "yaz",
+        )
+        return any(k in last_user for k in keywords)
+
+    @staticmethod
+    def _has_tool_response_after_last_user(messages: list[dict]) -> bool:
+        """Son kullanıcı mesajından sonra tool sonucu var mı?"""
+        last_user_index = -1
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") == "user":
+                last_user_index = i
+                break
+        if last_user_index == -1:
+            return False
+        for msg in messages[last_user_index + 1:]:
+            if msg.get("role") == "tool":
+                return True
+        return False
 
     def _parse_retry_delay(self, response_text: str) -> float:
         """Hata mesajından retry süresini çıkarır."""
@@ -213,6 +255,11 @@ class OpenRouterProvider(BaseLLMProvider):
 
     def get_available_models(self) -> list[str]:
         """OpenRouter'daki kullanılabilir modellerin listesini döndürür."""
+        models, _prices = self.get_available_models_with_pricing()
+        return models
+
+    def get_available_models_with_pricing(self) -> tuple[list[str], dict[str, dict]]:
+        """OpenRouter model listesini ve 1k token fiyatlarını döndürür."""
         try:
             response = self._client.get(
                 f"{self._base_url}/models",
@@ -226,7 +273,38 @@ class OpenRouterProvider(BaseLLMProvider):
 
         data = response.json()
         models = data.get("data", [])
-        return [m["id"] for m in models if "id" in m]
+        model_ids = []
+        prices = {}
+
+        for m in models:
+            model_id = m.get("id")
+            if not model_id:
+                continue
+            model_ids.append(model_id)
+
+            pricing = m.get("pricing") or {}
+            prompt_per_token = self._to_float(pricing.get("prompt"))
+            completion_per_token = self._to_float(pricing.get("completion"))
+            if prompt_per_token is None or completion_per_token is None:
+                continue
+
+            # OpenRouter model endpoint genelde token başına fiyat döndürür.
+            prices[model_id] = {
+                "prompt": prompt_per_token * 1000.0,
+                "completion": completion_per_token * 1000.0,
+            }
+
+        return model_ids, prices
+
+    @staticmethod
+    def _to_float(value) -> float | None:
+        """String/number değeri güvenli şekilde float'a çevirir."""
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     def set_model(self, model_name: str) -> None:
         """Aktif modeli değiştirir.

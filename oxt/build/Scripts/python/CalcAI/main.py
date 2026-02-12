@@ -14,6 +14,8 @@ LibreOffice'i dinleme modunda başlatmak için:
 import sys
 import argparse
 import logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
@@ -26,11 +28,30 @@ from ui.main_window import MainWindow
 def setup_logging(verbose: bool = False):
     """Loglama yapılandırmasını kurar."""
     level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%H:%M:%S",
+    fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    datefmt = "%H:%M:%S"
+
+    root = logging.getLogger()
+    root.setLevel(level)
+    root.handlers.clear()
+
+    console = logging.StreamHandler()
+    console.setLevel(level)
+    console.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
+    root.addHandler(console)
+
+    # Kalıcı dosya logu: ~/.config/libre_calc_ai/logs/app.log
+    log_dir = Path.home() / ".config" / "libre_calc_ai" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    file_handler = RotatingFileHandler(
+        log_dir / "app.log",
+        maxBytes=2 * 1024 * 1024,
+        backupCount=5,
+        encoding="utf-8",
     )
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
+    root.addHandler(file_handler)
 
 
 def parse_args():

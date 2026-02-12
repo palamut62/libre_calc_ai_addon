@@ -41,6 +41,14 @@ class SettingsDialog(QDialog):
         "functionary",
         "firefunction",
     ]
+    OPENROUTER_TOOL_HINT_MODELS = [
+        "gpt-4.1", "gpt-4o", "gpt-5", "o1", "o3", "o4",
+        "claude-3.5", "claude-3.7", "claude-4",
+        "qwen2.5", "qwen-2.5", "qwen3",
+        "llama-3.1", "llama-3.2", "llama-3.3",
+        "mistral", "command-r", "deepseek", "glm-4",
+    ]
+    TOOL_TAG = " [TOOLS]"
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -51,6 +59,7 @@ class SettingsDialog(QDialog):
         self._price_cache_openrouter = {}
         self._price_cache_ollama = {}
         self._last_price_model = ""
+        self._all_openrouter_models = []
         
         self._setup_ui()
         self._load_settings()
@@ -127,6 +136,12 @@ class SettingsDialog(QDialog):
 
         self._model_label = QLabel()
         api_form.addRow(self._model_label, model_layout)
+
+        self._openrouter_free_only_check = QCheckBox()
+        self._openrouter_free_only_check.stateChanged.connect(
+            self._on_openrouter_free_filter_changed
+        )
+        api_form.addRow("", self._openrouter_free_only_check)
 
         # Model fiyatları (1k token başına)
         price_layout = QHBoxLayout()
@@ -248,6 +263,9 @@ class SettingsDialog(QDialog):
         self._gemini_key_label.setText(get_text("settings_gemini_api_key", lang))
         self._ollama_url_label.setText(get_text("settings_ollama_url", lang))
         self._model_label.setText(get_text("settings_model", lang))
+        self._openrouter_free_only_check.setText(
+            get_text("settings_openrouter_free_only", lang)
+        )
         self._fetch_models_btn.setText(get_text("settings_fetch_models", lang))
         self._price_label.setText(get_text("settings_price_per_1k", lang))
         
@@ -301,6 +319,7 @@ class SettingsDialog(QDialog):
 
         # Modelleri getir butonu her zaman aktif
         self._fetch_models_btn.setEnabled(True)
+        self._openrouter_free_only_check.setVisible(not is_ollama and not is_gemini)
 
         # Model listesini güncelle
         self._update_model_list()
@@ -375,15 +394,16 @@ class SettingsDialog(QDialog):
             # OpenRouter modelleri
             cached = s.openrouter_models
             if cached:
-                self._model_combo.addItems(sorted(cached))
+                self._all_openrouter_models = sorted(cached)
             else:
-                self._model_combo.addItems([
+                self._all_openrouter_models = sorted([
                     "anthropic/claude-3.5-sonnet",
                     "anthropic/claude-3-haiku",
                     "google/gemini-pro",
                     "meta-llama/llama-3.1-70b-instruct",
                     "mistralai/mistral-large-latest",
                 ])
+            self._apply_openrouter_model_filter()
 
     def _load_settings(self):
         s = self._settings
@@ -413,15 +433,12 @@ class SettingsDialog(QDialog):
             model = s.gemini_model
         else:
             model = s.openrouter_model
-        idx = self._model_combo.findText(model)
-        if idx >= 0:
-            self._model_combo.setCurrentIndex(idx)
-        else:
-            self._model_combo.setCurrentText(model)
+        self._set_model_combo_value(model)
 
         # Model fiyat önbellekleri
         self._price_cache_openrouter = dict(s.openrouter_model_prices)
         self._price_cache_ollama = dict(s.ollama_model_prices)
+        self._openrouter_free_only_check.setChecked(bool(s.get("openrouter_free_only", False)))
         self._last_price_model = self._model_combo.currentText().strip()
         self._load_price_for_current_model()
 
@@ -449,15 +466,16 @@ class SettingsDialog(QDialog):
         if self._radio_ollama.isChecked():
             s.provider = "ollama"
             s.set("ollama_base_url", self._ollama_url_edit.text().strip())
-            s.set("ollama_default_model", self._model_combo.currentText().strip())
+            s.set("ollama_default_model", self._selected_model_id())
         elif self._radio_gemini.isChecked():
             s.provider = "gemini"
             s.set("gemini_api_key", self._gemini_key_edit.text().strip())
-            s.set("gemini_default_model", self._model_combo.currentText().strip())
+            s.set("gemini_default_model", self._selected_model_id())
         else:
             s.provider = "openrouter"
             s.set("openrouter_api_key", self._api_key_edit.text().strip())
-            s.set("openrouter_default_model", self._model_combo.currentText().strip())
+            s.set("openrouter_default_model", self._selected_model_id())
+            s.set("openrouter_free_only", self._openrouter_free_only_check.isChecked())
 
         # Model fiyatlarını kaydet
         s.openrouter_model_prices = self._price_cache_openrouter
@@ -479,7 +497,7 @@ class SettingsDialog(QDialog):
         return self._price_cache_openrouter
 
     def _save_price_cache_for_current_model(self):
-        model = self._last_price_model or self._model_combo.currentText().strip()
+        model = self._last_price_model or self._selected_model_id()
         if not model:
             return
         cache = self._get_price_cache()
@@ -490,7 +508,7 @@ class SettingsDialog(QDialog):
         self._last_price_model = model
 
     def _load_price_for_current_model(self):
-        model = self._model_combo.currentText().strip()
+        model = self._selected_model_id()
         cache = self._get_price_cache()
         data = cache.get(model, {})
         self._price_prompt_spin.setValue(float(data.get("prompt", 0.0)))
@@ -542,15 +560,25 @@ class SettingsDialog(QDialog):
                 self._settings.set("openrouter_api_key", self._api_key_edit.text().strip())
 
                 provider = OpenRouterProvider()
-                models = provider.get_available_models()
+                models, prices = provider.get_available_models_with_pricing()
+                # API'den gelen fiyatları (varsa) önbelleğe yaz
+                if prices:
+                    self._price_cache_openrouter.update(prices)
                 cache_key = "openrouter_models"
 
             if models:
-                self._model_combo.clear()
-                self._model_combo.addItems(sorted(models))
+                selected = self._selected_model_id()
+                if not is_ollama and not is_gemini:
+                    self._all_openrouter_models = sorted(models)
+                    self._apply_openrouter_model_filter(selected_model=selected)
+                else:
+                    self._model_combo.clear()
+                    self._model_combo.addItems(sorted(models))
 
                 # Modelleri önbelleğe kaydet
                 self._settings.set(cache_key, models)
+                if not is_ollama and not is_gemini:
+                    self._settings.openrouter_model_prices = self._price_cache_openrouter
                 self._settings.save()
 
                 QMessageBox.information(
@@ -573,3 +601,79 @@ class SettingsDialog(QDialog):
             )
         finally:
             QApplication.restoreOverrideCursor()
+
+    def _on_openrouter_free_filter_changed(self):
+        """OpenRouter ücretsiz model filtresi değiştiğinde listeyi günceller."""
+        if not self._radio_openrouter.isChecked():
+            return
+        selected = self._selected_model_id()
+        self._apply_openrouter_model_filter(selected_model=selected)
+
+    def _apply_openrouter_model_filter(self, selected_model: str = ""):
+        """OpenRouter model listesini ücretsiz filtreye göre uygular."""
+        models = list(self._all_openrouter_models)
+        if self._openrouter_free_only_check.isChecked():
+            models = [m for m in models if self._is_openrouter_free_model(m)]
+
+        self._model_combo.blockSignals(True)
+        self._model_combo.clear()
+        for m in models:
+            self._model_combo.addItem(self._display_openrouter_model(m), m)
+
+        target = selected_model or self._settings.openrouter_model
+        idx = self._model_combo.findData(target)
+        if idx >= 0:
+            self._model_combo.setCurrentIndex(idx)
+        else:
+            self._model_combo.setCurrentText(target)
+        self._model_combo.blockSignals(False)
+        self._check_tool_support()
+        self._load_price_for_current_model()
+
+    def _is_openrouter_free_model(self, model_name: str) -> bool:
+        """OpenRouter modelinin ücretsiz olup olmadığını tahmin eder."""
+        name = (model_name or "").lower()
+        if ":free" in name or "/free" in name or name.endswith("-free"):
+            return True
+
+        # Fiyat kaydı yoksa ücretsiz varsayma.
+        price = self._price_cache_openrouter.get(model_name)
+        if not price:
+            return False
+        prompt = float(price.get("prompt", -1.0))
+        completion = float(price.get("completion", -1.0))
+        return prompt == 0.0 and completion == 0.0
+
+    def _is_openrouter_tool_hint(self, model_name: str) -> bool:
+        """OpenRouter modeli için tool desteği olasılığına göre işaret verir."""
+        name = (model_name or "").lower()
+        return any(k in name for k in self.OPENROUTER_TOOL_HINT_MODELS)
+
+    def _display_openrouter_model(self, model_name: str) -> str:
+        """OpenRouter model adını etiketli gösterim metnine dönüştürür."""
+        if self._is_openrouter_tool_hint(model_name):
+            return f"{model_name}{self.TOOL_TAG}"
+        return model_name
+
+    def _selected_model_id(self) -> str:
+        """Model combobox'tan gerçek model id'sini döndürür."""
+        idx = self._model_combo.currentIndex()
+        data = self._model_combo.itemData(idx)
+        if isinstance(data, str) and data:
+            return data.strip()
+        text = self._model_combo.currentText().strip()
+        if text.endswith(self.TOOL_TAG):
+            text = text[: -len(self.TOOL_TAG)].strip()
+        return text
+
+    def _set_model_combo_value(self, model: str):
+        """Model combobox'u model id'ye göre seçer."""
+        idx = self._model_combo.findData(model)
+        if idx >= 0:
+            self._model_combo.setCurrentIndex(idx)
+            return
+        idx = self._model_combo.findText(model)
+        if idx >= 0:
+            self._model_combo.setCurrentIndex(idx)
+        else:
+            self._model_combo.setCurrentText(model)

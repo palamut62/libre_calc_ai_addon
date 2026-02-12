@@ -4,7 +4,12 @@ import logging
 import os
 import time
 
-from .address_utils import index_to_column, parse_range_string
+from .address_utils import (
+    column_to_index,
+    index_to_column,
+    parse_address,
+    parse_range_string,
+)
 
 try:
     import uno
@@ -46,6 +51,23 @@ class LibreOfficeBridge:
     def is_connected(self) -> bool:
         """Bağlantı durumunu döndürür."""
         return self._connected
+
+    # Geriye uyumluluk: eski kodda bridge/_class üstünden çağrılan yardımcılar.
+    @staticmethod
+    def _index_to_column(index: int) -> str:
+        return index_to_column(index)
+
+    @staticmethod
+    def _column_to_index(col_str: str) -> int:
+        return column_to_index(col_str)
+
+    @staticmethod
+    def parse_address(address: str) -> tuple[int, int]:
+        return parse_address(address)
+
+    @staticmethod
+    def parse_range_string(range_str: str) -> tuple[tuple[int, int], tuple[int, int]]:
+        return parse_range_string(range_str)
 
     def connect(self) -> bool:
         """
