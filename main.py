@@ -5,7 +5,7 @@ LibreOffice Calc ile doğal dil komutlarıyla etkileşim kuran
 PyQt5 tabanlı AI asistanını başlatır.
 
 Kullanım:
-    python main.py [--no-lo] [--theme dark|light] [--provider openrouter|ollama]
+    python main.py [--no-lo] [--theme dark|light] [--provider openrouter|ollama|gemini|groq]
 
 LibreOffice'i dinleme modunda başlatmak için:
     libreoffice --calc --accept="socket,host=localhost,port=2002;urp;"
@@ -72,7 +72,7 @@ def parse_args():
     )
     parser.add_argument(
         "--provider",
-        choices=["openrouter", "ollama"],
+        choices=["openrouter", "ollama", "gemini", "groq"],
         default=None,
         help="LLM sağlayıcısı (varsayılan: ayarlardan okunur)",
     )

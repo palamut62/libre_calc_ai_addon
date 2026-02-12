@@ -131,6 +131,7 @@ class AssistantWindow(tk.Toplevel):
         self._setup_window()
         self._create_widgets()
         self._setup_bindings()
+        self._setup_styles()
 
         logger.info("AssistantWindow olusturuldu")
 
@@ -139,8 +140,8 @@ class AssistantWindow(tk.Toplevel):
         self.title("LibreCalc AI Asistan")
 
         # Boyut ve konum
-        width = 320
-        height = 600
+        width = 350
+        height = 650
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
         x = screen_width - width - 50
@@ -151,80 +152,135 @@ class AssistantWindow(tk.Toplevel):
         self.attributes('-topmost', True)
 
         # Minimum boyut
-        self.minsize(350, 400)
+        self.minsize(300, 400)
 
-        # Stil
+        # Stil (Ana arka plan)
         self.configure(bg='#2b2b2b')
+
+    def _setup_styles(self):
+        """Ozel stilleri tanimlar."""
+        style = ttk.Style()
+        style.theme_use('default')  # Tutarlilik icin default tema
+
+        # Frame stilleri
+        style.configure('Main.TFrame', background='#2b2b2b')
+        style.configure('Status.TFrame', background='#2b2b2b')
+        style.configure('Input.TFrame', background='#3c3c3c')  # Input container rengi
+
+        # Label stilleri
+        style.configure('Header.TLabel',
+            background='#2b2b2b',
+            foreground='#ffffff',
+            font=('Segoe UI', 12, 'bold')
+        )
+        style.configure('Status.TLabel',
+            background='#2b2b2b',
+            foreground='#cccccc',
+            font=('Segoe UI', 9)
+        )
+        style.configure('Info.TLabel',
+            background='#2b2b2b',
+            foreground='#888888',
+            font=('Segoe UI', 8)
+        )
+
+        # Button stili (Flat ve modern)
+        style.configure('Send.TButton',
+            background='#007acc',  # VSCode mavi vurgu (veya benzeri)
+            foreground='white',
+            borderwidth=0,
+            focuscolor='none',
+            font=('Segoe UI', 9, 'bold')
+        )
+        style.map('Send.TButton',
+            background=[('active', '#0098ff'), ('pressed', '#005a9e')]
+        )
 
     def _create_widgets(self):
         """UI widget'larini olusturur."""
-        # Ana frame
-        main_frame = ttk.Frame(self)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # Ana frame (Padding ile icerigi ortalar)
+        main_frame = ttk.Frame(self, style='Main.TFrame')
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
 
-        # Baslik
+        # Baslik (Daha sade)
+        header_frame = ttk.Frame(main_frame, style='Main.TFrame')
+        header_frame.pack(fill=tk.X, pady=(0, 10))
+
         title_label = ttk.Label(
-            main_frame,
-            text="AI Asistan",
-            font=('Segoe UI', 14, 'bold')
+            header_frame,
+            text="AI ASSISTANT",
+            style='Header.TLabel'
         )
-        title_label.pack(pady=(0, 10))
+        title_label.pack(side=tk.LEFT)
 
-        # Durum cubugu
-        status_frame = ttk.Frame(main_frame)
-        status_frame.pack(fill=tk.X, pady=(0, 10))
-
+        # Durum gostergesi (Kucuk nokta veya metin)
         self.status_label = ttk.Label(
-            status_frame,
-            text="Hazir",
-            font=('Segoe UI', 9)
+            header_frame,
+            text="Hazır",
+            style='Status.TLabel'
         )
-        self.status_label.pack(side=tk.LEFT)
+        self.status_label.pack(side=tk.RIGHT, anchor='center')
 
-        # Mesaj alani
+        # Mesaj alani (Flat gorunum)
         self.messages_text = scrolledtext.ScrolledText(
             main_frame,
             wrap=tk.WORD,
             font=('Segoe UI', 10),
-            bg='#1e1e1e',
-            fg='#ffffff',
+            bg='#1e1e1e',     # Icerik alani rengi
+            fg='#e0e0e0',     # Metin rengi
             insertbackground='white',
             state=tk.DISABLED,
-            height=20
+            bd=0,             # Cercevesiz
+            highlightthickness=0,
+            padx=10,
+            pady=10
         )
-        self.messages_text.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        self.messages_text.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
 
-        # Giris alani frame
-        input_frame = ttk.Frame(main_frame)
-        input_frame.pack(fill=tk.X)
+        # Tag yapilandirmasi (Zengin metin icin)
+        self.messages_text.tag_config('user_header', foreground='#4ec9b0', font=('Segoe UI', 9, 'bold'), spacing3=2)
+        self.messages_text.tag_config('ai_header', foreground='#569cd6', font=('Segoe UI', 9, 'bold'), spacing3=2)
+        self.messages_text.tag_config('content', foreground='#d4d4d4', lmargin1=10, lmargin2=10, spacing1=2, spacing3=10)
+        self.messages_text.tag_config('system', foreground='#808080', font=('Segoe UI', 9, 'italic'))
+
+        # Giris alani kapsayicisi (Kapsul gorunumlu)
+        # Tkinter'da tam yuvarlak kose zordur, ama renk ile butunluk saglayabiliriz.
+        input_container = ttk.Frame(main_frame, style='Input.TFrame')
+        input_container.pack(fill=tk.X, ipady=5)
 
         # Giris alani
         self.input_text = tk.Text(
-            input_frame,
+            input_container,
             wrap=tk.WORD,
             font=('Segoe UI', 10),
-            bg='#3c3c3c',
+            bg='#3c3c3c',     # Container ile ayni renk
             fg='#ffffff',
             insertbackground='white',
-            height=3
+            height=3,
+            bd=0,
+            highlightthickness=0,
+            padx=10,
+            pady=5
         )
-        self.input_text.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.input_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(2, 0))
 
-        # Gonder butonu
+        # Gonder butonu (Ikon yerine metin simdilik, ama stilize)
         self.send_button = ttk.Button(
-            input_frame,
-            text="Gonder",
-            command=self._on_send
+            input_container,
+            text="GÖNDER",
+            style='Send.TButton',
+            command=self._on_send,
+            cursor="hand2"
         )
-        self.send_button.pack(side=tk.RIGHT, padx=(10, 0))
+        self.send_button.pack(side=tk.RIGHT, padx=5, pady=5, fill=tk.Y)
 
         # Alt bilgi
         info_label = ttk.Label(
             main_frame,
-            text="Ctrl+Enter ile gonder | ESC ile kapat",
-            font=('Segoe UI', 8)
+            text="Ctrl+Enter ile gönder | ESC: Kapat",
+            style='Info.TLabel'
         )
-        info_label.pack(pady=(10, 0))
+        info_label.pack(pady=(5, 0), anchor='e')
 
     def _setup_bindings(self):
         """Klavye kisayollarini ayarlar."""
@@ -232,19 +288,21 @@ class AssistantWindow(tk.Toplevel):
         self.bind('<Escape>', lambda e: self._on_close())
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
+        # Input focus efekti (istege bagli - basitce bg degisimi yapilabilir ama su an gerek yok)
+
     def _add_message(self, text: str, sender: str = "system"):
-        """Mesaj alanina mesaj ekler."""
+        """Mesaj alanina formatli mesaj ekler."""
         self.messages_text.configure(state=tk.NORMAL)
 
-        prefix = ""
         if sender == "user":
-            prefix = "Sen: "
+            self.messages_text.insert(tk.END, "SEN\n", 'user_header')
+            self.messages_text.insert(tk.END, f"{text}\n\n", 'content')
         elif sender == "assistant":
-            prefix = "AI: "
+            self.messages_text.insert(tk.END, "AI\n", 'ai_header')
+            self.messages_text.insert(tk.END, f"{text}\n\n", 'content')
         else:
-            prefix = "Sistem: "
+            self.messages_text.insert(tk.END, f"[Sistem] {text}\n\n", 'system')
 
-        self.messages_text.insert(tk.END, f"{prefix}{text}\n\n")
         self.messages_text.see(tk.END)
         self.messages_text.configure(state=tk.DISABLED)
 
@@ -259,7 +317,7 @@ class AssistantWindow(tk.Toplevel):
         self.input_text.delete("1.0", tk.END)
 
         # Durumu guncelle
-        self.status_label.configure(text="Dusunuyor...")
+        self.status_label.configure(text="Düşünüyor...")
         self.update()
 
         # TODO: LLM cagrisini burada yap
@@ -267,8 +325,12 @@ class AssistantWindow(tk.Toplevel):
         response = self._get_placeholder_response(text)
 
         # Yaniti ekle
+        # Kisa bir gecikme simulasyonu (UI donmamasi icin after kullanilir normalde)
+        self.after(100, lambda: self._complete_response(response))
+
+    def _complete_response(self, response):
         self._add_message(response, "assistant")
-        self.status_label.configure(text="Hazir")
+        self.status_label.configure(text="Hazır")
 
     def _get_placeholder_response(self, user_text: str) -> str:
         """Placeholder yanit dondurur (test icin)."""
@@ -281,12 +343,17 @@ class AssistantWindow(tk.Toplevel):
                     if desktop:
                         doc = desktop.getCurrentComponent()
                         if doc:
-                            return f"LibreOffice baglantisi basarili! Belge: {doc.getTitle()}"
+                            try:
+                                title = doc.getTitle()
+                            except:
+                                title = "Adsız"
+                            return f"LibreOffice bağlantısı başarılı!\nAktif Belge: {title}"
                 except Exception as e:
-                    return f"LibreOffice baglantisi hatasi: {e}"
-            return "UNO context mevcut degil"
+                    return f"LibreOffice bağlantısı hatası: {e}"
+            return "UNO context mevcut değil. (LibreOffice harici çalışıyor olabilir)"
 
-        return f"Mesajinizi aldim: '{user_text[:50]}...'\n\nBu bir test yaniti. LLM entegrasyonu henuz aktif degil."
+        # Standart echo
+        return f"Mesajını aldım: '{user_text}'\n\nBu henüz geliştirme aşamasındaki bir arayüzdür. Gerçek AI entegrasyonu eklenecektir."
 
     def _on_close(self):
         """Pencereyi kapatir."""

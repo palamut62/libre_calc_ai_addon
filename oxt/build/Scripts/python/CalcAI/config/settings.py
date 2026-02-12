@@ -38,6 +38,10 @@ class Settings:
             "openrouter_api_key": "",
             "openrouter_base_url": "https://openrouter.ai/api/v1",
             "openrouter_default_model": "anthropic/claude-3.5-sonnet",
+            # Groq
+            "groq_api_key": "",
+            "groq_base_url": "https://api.groq.com/openai/v1",
+            "groq_default_model": "llama-3.1-8b-instant",
             # Gemini
             "gemini_api_key": "",
             "gemini_base_url": "https://generativelanguage.googleapis.com/v1beta",
@@ -48,18 +52,20 @@ class Settings:
             # LLM Parametreleri
             "llm_temperature": 0.7,
             "llm_max_tokens": 4096,
-            "llm_provider": "openrouter",  # "openrouter", "ollama", "gemini"
+            "llm_provider": "openrouter",  # "openrouter", "ollama", "gemini", "groq"
             # LibreOffice
             "libreoffice_host": "localhost",
             "libreoffice_port": 2002,
             # UI
-            "ui_theme": "dark",
+            "ui_theme": "light",
             "ui_language": "tr",
             "openrouter_models": [],
+            "groq_models": [],
             "ollama_models": [],
             "gemini_models": [],
             "openrouter_model_prices": {},
             "ollama_model_prices": {},
+            "openrouter_free_only": False,
             "logging_enabled": True,
         }
 
@@ -74,6 +80,9 @@ class Settings:
             "OPENROUTER_API_KEY": "openrouter_api_key",
             "OPENROUTER_BASE_URL": "openrouter_base_url",
             "OPENROUTER_DEFAULT_MODEL": "openrouter_default_model",
+            "GROQ_API_KEY": "groq_api_key",
+            "GROQ_BASE_URL": "groq_base_url",
+            "GROQ_DEFAULT_MODEL": "groq_default_model",
             "GEMINI_API_KEY": "gemini_api_key",
             "GEMINI_BASE_URL": "gemini_base_url",
             "GEMINI_DEFAULT_MODEL": "gemini_default_model",
@@ -111,10 +120,13 @@ class Settings:
     def save(self):
         """Mevcut ayarları dosyaya kaydet."""
         self._config_dir.mkdir(parents=True, exist_ok=True)
-        # Sadece varsayılandan farklı olanları kaydet
+        # Sadece varsayılandan farklı olanları kaydet.
+        # Tema/dil gibi kullanıcı tercihlerinde .env değerleri her açılışta
+        # tekrar baskın gelmesin diye bu alanları her zaman açıkça yaz.
         diff = {}
+        always_persist = {"ui_theme", "ui_language"}
         for key, value in self._settings.items():
-            if value != self._defaults.get(key):
+            if key in always_persist or value != self._defaults.get(key):
                 diff[key] = value
         with open(self._config_file, "w") as f:
             json.dump(diff, f, indent=2, ensure_ascii=False)
@@ -149,6 +161,18 @@ class Settings:
         return self._settings["gemini_api_key"]
 
     @property
+    def groq_api_key(self) -> str:
+        return self._settings["groq_api_key"]
+
+    @property
+    def groq_base_url(self) -> str:
+        return self._settings["groq_base_url"]
+
+    @property
+    def groq_model(self) -> str:
+        return self._settings["groq_default_model"]
+
+    @property
     def gemini_base_url(self) -> str:
         return self._settings["gemini_base_url"]
 
@@ -178,8 +202,8 @@ class Settings:
 
     @provider.setter
     def provider(self, value: str):
-        if value not in ("openrouter", "ollama", "gemini"):
-            raise ValueError("Provider 'openrouter', 'ollama' veya 'gemini' olmalıdır")
+        if value not in ("openrouter", "ollama", "gemini", "groq"):
+            raise ValueError("Provider 'openrouter', 'ollama', 'gemini' veya 'groq' olmalıdır")
         self._settings["llm_provider"] = value
 
     @property
@@ -233,6 +257,14 @@ class Settings:
     @gemini_models.setter
     def gemini_models(self, value: list):
         self._settings["gemini_models"] = value
+
+    @property
+    def groq_models(self) -> list:
+        return self._settings.get("groq_models", [])
+
+    @groq_models.setter
+    def groq_models(self, value: list):
+        self._settings["groq_models"] = value
 
     @property
     def openrouter_model_prices(self) -> dict:

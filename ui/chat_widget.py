@@ -1,8 +1,9 @@
 """Sohbet arayuzu - Minimal chat widget (Claude Excel benzeri)."""
 
+import html
 import re
 
-from PyQt5.QtCore import pyqtSignal, Qt, QTimer
+from PyQt5.QtCore import pyqtSignal, Qt, QTimer, QSize
 from PyQt5.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -18,8 +19,14 @@ from PyQt5.QtWidgets import (
 from .icons import get_icon
 
 
-def _markdown_to_html(text: str) -> str:
+def _markdown_to_html(text: str, theme_name: str = "dark") -> str:
     """Basit Markdown metnini HTML'e donusturur."""
+    is_dark = theme_name == "dark"
+    table_header_bg = "rgba(255,255,255,0.08)" if is_dark else "rgba(0,0,0,0.08)"
+    table_border = "rgba(255,255,255,0.18)" if is_dark else "rgba(0,0,0,0.14)"
+    code_bg = "rgba(255,255,255,0.10)" if is_dark else "rgba(0,0,0,0.20)"
+    inline_code_bg = "rgba(255,255,255,0.14)" if is_dark else "rgba(0,0,0,0.15)"
+
     def _escape_html(value: str) -> str:
         return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -75,15 +82,15 @@ def _markdown_to_html(text: str) -> str:
         ]
         for i, h in enumerate(headers):
             table_parts.append(
-                f"<th style=\"text-align:{aligns[i]}; border:1px solid rgba(0,0,0,0.15); padding:6px; "
-                f"background: rgba(0,0,0,0.08);\">{_escape_html(h)}</th>"
+                f"<th style=\"text-align:{aligns[i]}; border:1px solid {table_border}; padding:6px; "
+                f"background: {table_header_bg};\">{_escape_html(h)}</th>"
             )
         table_parts.append("</tr></thead><tbody>")
         for row in body_rows:
             table_parts.append("<tr>")
             for i, cell in enumerate(row):
                 table_parts.append(
-                    f"<td style=\"text-align:{aligns[i]}; border:1px solid rgba(0,0,0,0.12); padding:6px;\">"
+                    f"<td style=\"text-align:{aligns[i]}; border:1px solid {table_border}; padding:6px;\">"
                     f"{_escape_html(cell)}</td>"
                 )
             table_parts.append("</tr>")
@@ -112,8 +119,9 @@ def _markdown_to_html(text: str) -> str:
         code = m.group(1).strip()
         code = _escape_html(code)
         return (
-            '<pre style="background-color: rgba(0,0,0,0.2); padding: 8px; '
-            'border-radius: 4px; font-family: monospace; white-space: pre-wrap;">'
+            f'<pre style="background-color: {code_bg}; padding: 8px; '
+            f'border-radius: 4px; font-family: monospace; white-space: pre-wrap; '
+            f'border: 1px solid {table_border};">'
             f"{code}</pre>"
         )
 
@@ -124,7 +132,7 @@ def _markdown_to_html(text: str) -> str:
         code = m.group(1)
         code = _escape_html(code)
         return (
-            '<code style="background-color: rgba(0,0,0,0.15); padding: 1px 4px; '
+            f'<code style="background-color: {inline_code_bg}; padding: 1px 4px; '
             f'border-radius: 3px; font-family: monospace;">{code}</code>'
         )
 
@@ -163,7 +171,9 @@ class ChatWidget(QWidget):
         self._stream_bubble = None
         self._stream_role = None
         self._stream_wrapper = None
+        self._stream_thinking_active = False
         self._is_generating = False
+        self._theme_name = "dark"
 
         # Stream debounce için
         self._scroll_debounce_timer = QTimer(self)
@@ -176,8 +186,25 @@ class ChatWidget(QWidget):
     def _setup_ui(self):
         """Arayuz elemanlarini olusturur."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(16)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+
+        # Recent actions section
+        recent_frame = QFrame()
+        recent_frame.setObjectName("recent_section")
+        recent_layout = QVBoxLayout(recent_frame)
+        recent_layout.setContentsMargins(0, 0, 0, 0)
+        recent_layout.setSpacing(8)
+
+        recent_title = QLabel("Recent actions")
+        recent_title.setObjectName("recent_title")
+        recent_layout.addWidget(recent_title)
+
+        self._recent_action_item = QLabel("Henüz bir işlem yok.")
+        self._recent_action_item.setWordWrap(True)
+        self._recent_action_item.setObjectName("recent_action_item")
+        recent_layout.addWidget(self._recent_action_item)
+        layout.addWidget(recent_frame)
 
         # Mesaj alani
         self._scroll_area = QScrollArea()
@@ -204,62 +231,68 @@ class ChatWidget(QWidget):
         self._loading_timer.setInterval(400)
         self._loading_timer.timeout.connect(self._animate_loading)
 
-        # Minimal Input Container
+        # Modern Flat Input Container
         input_container = QFrame()
         input_container.setObjectName("input_container")
-        input_container.setStyleSheet("""
-            QFrame#input_container {
-                background-color: #ffffff;
-                border: 1px solid #cccccc;
-                border-radius: 8px;
-                padding: 4px;
-            }
-        """)
 
         input_v_layout = QVBoxLayout(input_container)
-        input_v_layout.setContentsMargins(12, 12, 12, 12)
-        input_v_layout.setSpacing(8)
+        input_v_layout.setContentsMargins(16, 12, 16, 12)
+        input_v_layout.setSpacing(10)
 
-        self._provider_model_label = QLabel("")
-        self._provider_model_label.setObjectName("provider_model_label")
-        self._provider_model_label.setStyleSheet("color: #64748b; font-size: 11px;")
-        input_v_layout.addWidget(self._provider_model_label)
-
+        # Input text area
         self._input_edit = QTextEdit()
-        self._input_edit.setPlaceholderText("Calc AI ile konuşun... (Ctrl+Enter)")
-        self._input_edit.setFixedHeight(70)
+        self._input_edit.setPlaceholderText("ArasAI ile konuşun... (Ctrl+Enter)")
+        self._input_edit.setFixedHeight(74)
         self._input_edit.setFrameShape(QFrame.NoFrame)
-        self._input_edit.setStyleSheet("background-color: transparent; border: none; font-size: 14px; color: #000000;")
         self._input_edit.setAcceptRichText(False)
         input_v_layout.addWidget(self._input_edit)
 
-        input_h_layout = QHBoxLayout()
-        input_h_layout.addStretch()
+        # Bottom bar with chips and buttons
+        bottom_bar = QHBoxLayout()
+        bottom_bar.setSpacing(8)
 
-        self._clear_btn = QPushButton("Temizle")
+        self._plus_btn = QPushButton("+")
+        self._plus_btn.setObjectName("input_icon_btn")
+        self._plus_btn.setFixedSize(24, 24)
+        self._plus_btn.setCursor(Qt.PointingHandCursor)
+        self._plus_btn.setToolTip("Yeni sohbet")
+        self._plus_btn.clicked.connect(self.clear_chat)
+        bottom_bar.addWidget(self._plus_btn)
+
+        # Clear button - icon in input bar
+        self._clear_btn = QPushButton("")
+        self._clear_btn.setObjectName("input_icon_btn")
         self._clear_btn.setFlat(True)
+        self._clear_btn.setFixedSize(24, 24)
         self._clear_btn.setCursor(Qt.PointingHandCursor)
-        self._clear_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: #666666;
-                font-weight: 500;
-                padding: 6px 12px;
-            }
-            QPushButton:hover { color: #000000; background-color: #eeeeee; border-radius: 4px; }
-        """)
+        self._clear_btn.setIcon(get_icon("clear", self))
+        self._clear_btn.setIconSize(QSize(14, 14))
+        self._clear_btn.setToolTip("Temizle")
         self._clear_btn.clicked.connect(self.clear_chat)
-        input_h_layout.addWidget(self._clear_btn)
+        bottom_bar.addWidget(self._clear_btn)
 
+        # Model/Provider chip
+        self._provider_model_label = QLabel("")
+        self._provider_model_label.setObjectName("model_chip")
+        self._provider_model_label.setMinimumHeight(24)
+        self._provider_model_label.setAlignment(Qt.AlignCenter)
+        bottom_bar.addWidget(self._provider_model_label)
+        bottom_bar.addStretch()
+
+        # Send button - accent color
         self._action_btn = QPushButton("")
-        self._action_btn.setFixedSize(36, 32)
+        self._action_btn.setObjectName("action_btn")
+        self._action_btn.setFixedSize(32, 32)
         self._action_btn.setCursor(Qt.PointingHandCursor)
-        self._action_btn.setIcon(get_icon("send", self))
+        self._action_btn.setIconSize(QSize(16, 16))
+        self._action_send_style = ""
+        self._action_stop_style = ""
         self._action_btn.clicked.connect(self._on_action_clicked)
-        input_h_layout.addWidget(self._action_btn)
+        bottom_bar.addWidget(self._action_btn)
 
-        input_v_layout.addLayout(input_h_layout)
+        input_v_layout.addLayout(bottom_bar)
         layout.addWidget(input_container)
+        self._apply_icon_theme()
 
     def keyPressEvent(self, event):
         """Ctrl+Enter ile mesaj gondermeyi yakalar."""
@@ -277,6 +310,7 @@ class ChatWidget(QWidget):
         if not text:
             return
         self._input_edit.clear()
+        self._set_recent_action_text(text)
         self.message_sent.emit(text)
 
     def _on_cancel(self):
@@ -296,24 +330,30 @@ class ChatWidget(QWidget):
         bubble, wrapper = self._create_message_bubble(role, "")
         self._stream_bubble = bubble
         self._stream_wrapper = wrapper
+        if role == "assistant":
+            self._start_stream_thinking()
         return self._stream_bubble
 
     def update_stream_message(self, content: str):
         """Stream mesaj baloncuğunu günceller."""
         if not self._stream_bubble or not self._stream_role:
             return
+        if content and content.strip():
+            self._stop_stream_thinking()
         self._set_bubble_content(self._stream_bubble, self._stream_role, content)
         if not self._scroll_debounce_timer.isActive():
             self._scroll_debounce_timer.start()
 
     def end_stream_message(self):
         """Stream mesajını sonlandırır."""
+        self._stop_stream_thinking()
         self._stream_bubble = None
         self._stream_role = None
         self._stream_wrapper = None
 
     def discard_stream_message(self):
         """Stream baloncuğunu kaldırır."""
+        self._stop_stream_thinking()
         if self._stream_wrapper:
             self._stream_wrapper.deleteLater()
         self._stream_bubble = None
@@ -321,16 +361,11 @@ class ChatWidget(QWidget):
         self._stream_wrapper = None
 
     def _create_message_bubble(self, role: str, content: str):
-        """Mesaj baloncuğu oluşturur."""
+        """Mesaj baloncuğu oluşturur - Flat Cursor/VSCode tarzı."""
         wrapper = QWidget()
         v_layout = QVBoxLayout(wrapper)
         v_layout.setContentsMargins(0, 0, 0, 0)
-        v_layout.setSpacing(6)
-
-        from .i18n import get_text
-
-        header = QLabel()
-        header.setStyleSheet("color: #94a3b8; font-weight: 700; font-size: 10px; letter-spacing: 0.6px;")
+        v_layout.setSpacing(0)
 
         bubble = QTextBrowser()
         bubble.setFrameShape(QFrame.NoFrame)
@@ -340,18 +375,11 @@ class ChatWidget(QWidget):
         bubble.setLineWrapMode(QTextBrowser.WidgetWidth)
 
         if role == "user":
-            header.setText(get_text("chat_you", self._current_lang))
             bubble.setObjectName("user_bubble")
-            v_layout.addWidget(header, 0, Qt.AlignRight)
-            v_layout.addWidget(bubble, 0, Qt.AlignRight)
-            bubble.setFixedWidth(280)
         else:
-            header.setText(get_text("chat_aras", self._current_lang))
-            header.setStyleSheet("color: #22c55e; font-weight: 700; font-size: 10px; letter-spacing: 0.6px;")
             bubble.setObjectName("ai_bubble")
-            v_layout.addWidget(header, 0, Qt.AlignLeft)
-            v_layout.addWidget(bubble, 0, Qt.AlignLeft)
-            bubble.setFixedWidth(320)
+
+        v_layout.addWidget(bubble)
 
         self._set_bubble_content(bubble, role, content)
 
@@ -360,17 +388,21 @@ class ChatWidget(QWidget):
         return bubble, wrapper
 
     def _set_bubble_content(self, bubble: QTextBrowser, role: str, content: str):
-        """Baloncuk içeriğini ayarlar."""
+        """Baloncuk içeriğini ayarlar - flat style."""
         if role == "user":
-            safe = content.replace("\n", "<br>")
-            bubble.setHtml(f'<div style="line-height: 1.4;">{safe}</div>')
+            safe = html.escape(content).replace("\n", "<br>")
+            bubble.setHtml(f'<div style="line-height: 1.5;">{safe}</div>')
         else:
-            bubble.setHtml(f'<div style="line-height: 1.5;">{_markdown_to_html(content)}</div>')
+            bubble.setHtml(
+                f'<div style="line-height: 1.6;">'
+                f'{_markdown_to_html(content, self._theme_name)}'
+                f"</div>"
+            )
 
         doc = bubble.document()
-        doc.setTextWidth(bubble.width())
-        height = doc.size().height() + 24
-        bubble.setFixedHeight(int(height))
+        doc.setTextWidth(bubble.viewport().width() if bubble.viewport().width() > 0 else 400)
+        height = doc.size().height() + 16
+        bubble.setFixedHeight(max(int(height), 32))
 
     def _scroll_to_bottom(self):
         """Mesaj alanini en alta kaydirir."""
@@ -378,27 +410,26 @@ class ChatWidget(QWidget):
         sb.setValue(sb.maximum())
 
     def show_loading(self):
-        """Yukleniyor gostergesi baslatir."""
-        from .i18n import get_text
-
-        self._loading_dots = 0
-        self._loading_label.setText(get_text("chat_thinking", self._current_lang))
-        self._loading_label.setVisible(True)
-        self._loading_timer.start()
+        """AI balonundaki düşünme animasyonunu başlatır."""
+        if self._stream_bubble and self._stream_role == "assistant":
+            self._start_stream_thinking()
 
     def hide_loading(self):
-        """Yukleniyor gostergesini gizler."""
-        self._loading_timer.stop()
+        """Düşünme animasyonunu durdurur."""
+        self._stop_stream_thinking()
         self._loading_label.setVisible(False)
 
     def _animate_loading(self):
-        """Yukleniyor animasyonunu gunceller."""
+        """Düşünme animasyonunu günceller."""
         from .i18n import get_text
 
         self._loading_dots = (self._loading_dots + 1) % 4
-        dots = "." * self._loading_dots
-        base_text = get_text("chat_thinking", self._current_lang)
-        self._loading_label.setText(f"{base_text}{dots}")
+        if self._stream_thinking_active and self._stream_bubble and self._stream_role == "assistant":
+            dots = "." * self._loading_dots
+            base_text = get_text("chat_thinking", self._current_lang)
+            self._set_bubble_content(self._stream_bubble, "assistant", f"{base_text}{dots}")
+            if not self._scroll_debounce_timer.isActive():
+                self._scroll_debounce_timer.start()
 
     def clear_chat(self):
         """Tum mesajlari temizler."""
@@ -419,71 +450,20 @@ class ChatWidget(QWidget):
         """Stream durumuna göre durdur butonunu yönetir."""
         self._is_generating = generating
         if generating:
-            self._action_btn.setIcon(get_icon("stop", self))
             self._action_btn.setToolTip(self._stop_tooltip if hasattr(self, '_stop_tooltip') else "Durdur")
             self._action_btn.setEnabled(True)
             if hasattr(self, "_action_stop_style"):
                 self._action_btn.setStyleSheet(self._action_stop_style)
         else:
-            self._action_btn.setIcon(get_icon("send", self))
             self._action_btn.setToolTip(self._send_tooltip if hasattr(self, '_send_tooltip') else "Gönder")
             if hasattr(self, "_action_send_style"):
                 self._action_btn.setStyleSheet(self._action_send_style)
+        self._apply_icon_theme()
 
     def update_theme(self, theme_name: str):
         """Chat bilesenlerinin temasini gunceller."""
-        is_dark = theme_name == "dark"
-
-        bg_color = "#0b1220" if is_dark else "#ffffff"
-        border_color = "#1f2937" if is_dark else "#e2e8f0"
-        text_color = "#e2e8f0" if is_dark else "#0f172a"
-        placeholder_color = "#94a3b8" if is_dark else "#64748b"
-        btn_hover_bg = "#111827" if is_dark else "#e2e8f0"
-        provider_label_color = "#94a3b8" if is_dark else "#64748b"
-
-        self.findChild(QFrame, "input_container").setStyleSheet(f"""
-            QFrame#input_container {{
-                background-color: {bg_color};
-                border: 1px solid {border_color};
-                border-radius: 8px;
-                padding: 4px;
-            }}
-        """)
-
-        self._input_edit.setStyleSheet(f"background-color: transparent; border: none; font-size: 14px; color: {text_color};")
-        self._provider_model_label.setStyleSheet(f"color: {provider_label_color}; font-size: 11px;")
-
-        self._clear_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: transparent;
-                color: {placeholder_color};
-                font-weight: 500;
-                padding: 6px 12px;
-            }}
-            QPushButton:hover {{ color: {text_color}; background-color: {btn_hover_bg}; border-radius: 4px; }}
-        """)
-
-        self._action_send_style = f"""
-            QPushButton {{
-                background-color: transparent;
-                border: none;
-                border-radius: 6px;
-                padding: 6px 10px;
-            }}
-            QPushButton:hover {{ background-color: {btn_hover_bg}; }}
-        """
-        self._action_stop_style = f"""
-            QPushButton {{
-                background-color: transparent;
-                border: none;
-                border-radius: 6px;
-                padding: 6px 10px;
-            }}
-            QPushButton:hover {{ background-color: {btn_hover_bg}; }}
-        """
-        self._action_btn.setStyleSheet(
-            self._action_stop_style if self._is_generating else self._action_send_style
-        )
+        self._theme_name = theme_name
+        self._apply_icon_theme()
 
     def update_language(self, lang: str):
         """Chat bilesenlerinin dilini gunceller."""
@@ -492,7 +472,8 @@ class ChatWidget(QWidget):
         self._current_lang = lang
         self._input_edit.setPlaceholderText(get_text("chat_placeholder", lang))
         self._send_tooltip = get_text("chat_send", lang)
-        self._clear_btn.setText(get_text("chat_clear", lang))
+        self._clear_btn.setToolTip(get_text("chat_clear", lang))
+        self._plus_btn.setToolTip("Yeni sohbet")
         self._stop_tooltip = get_text("chat_stop", lang)
         self._action_btn.setToolTip(self._stop_tooltip if self._is_generating else self._send_tooltip)
         self._update_provider_model_label()
@@ -522,3 +503,36 @@ class ChatWidget(QWidget):
             model=self._model_name,
         )
         self._provider_model_label.setText(text)
+
+    def _set_recent_action_text(self, text: str):
+        """Recent actions kartındaki son kullanıcı girdisini günceller."""
+        compact = " ".join(text.split())
+        if len(compact) > 110:
+            compact = compact[:107] + "..."
+        self._recent_action_item.setText(compact)
+
+    def _apply_icon_theme(self):
+        """Tema uyumlu giriş ikonu renklerini uygular."""
+        icon_neutral = "#d2dae6" if self._theme_name == "dark" else "#57606a"
+        icon_send = "#9dc2ff" if self._theme_name == "dark" else "#0969da"
+        icon_stop = "#ff938f" if self._theme_name == "dark" else "#cf222e"
+
+        self._clear_btn.setIcon(get_icon("clear", self, color=icon_neutral))
+        if self._is_generating:
+            self._action_btn.setIcon(get_icon("stop", self, color=icon_stop))
+        else:
+            self._action_btn.setIcon(get_icon("send", self, color=icon_send))
+
+    def _start_stream_thinking(self):
+        """AI stream balonunda düşünme animasyonunu başlatır."""
+        if not self._stream_bubble or self._stream_role != "assistant":
+            return
+        self._stream_thinking_active = True
+        self._loading_dots = 0
+        self._loading_timer.start()
+        self._animate_loading()
+
+    def _stop_stream_thinking(self):
+        """AI stream balonundaki düşünme animasyonunu durdurur."""
+        self._stream_thinking_active = False
+        self._loading_timer.stop()

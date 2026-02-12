@@ -21,7 +21,7 @@ from PyQt5.QtWidgets import (
 
 from config.settings import Settings
 from core import LibreOfficeBridge, CellInspector, CellManipulator, SheetAnalyzer, ErrorDetector
-from llm import OpenRouterProvider, OllamaProvider, GeminiProvider
+from llm import OpenRouterProvider, OllamaProvider, GeminiProvider, GroqProvider
 from llm.tool_definitions import TOOLS, ToolDispatcher
 from llm.prompt_templates import SYSTEM_PROMPT
 
@@ -113,8 +113,8 @@ class MainWindow(QMainWindow):
         """Arayuz metinlerini secili dile gore gunceller."""
         lang = self._current_lang
 
-        self.setWindowTitle(get_text("window_title", lang))
-        self.findChild(QLabel, "title_label").setText(get_text("window_title", lang))
+        self.setWindowTitle("ArasAI")
+        self.findChild(QLabel, "title_label").setText("ArasAI")
 
         # Menuler
         self._file_menu.setTitle(get_text("menu_file", lang))
@@ -143,7 +143,7 @@ class MainWindow(QMainWindow):
 
     def _setup_window(self):
         """Pencere ozelliklerini ayarlar."""
-        self.setWindowTitle("Calc AI")
+        self.setWindowTitle("ArasAI")
         self.setMinimumWidth(380)
 
         self.setWindowFlags(
@@ -184,36 +184,66 @@ class MainWindow(QMainWindow):
         # Custom Title Bar
         self._title_bar = QFrame()
         self._title_bar.setObjectName("custom_title_bar")
-        self._title_bar.setFixedHeight(32)
+        self._title_bar.setFixedHeight(40)
         title_layout = QHBoxLayout(self._title_bar)
-        title_layout.setContentsMargins(10, 0, 0, 0)
-        title_layout.setSpacing(0)
+        title_layout.setContentsMargins(12, 0, 8, 0)
+        title_layout.setSpacing(6)
 
-        title_label = QLabel("Calc AI")
+        title_label = QLabel("ArasAI")
         title_label.setObjectName("title_label")
         title_layout.addWidget(title_label)
         title_layout.addStretch()
 
         min_btn = QPushButton("—")
-        min_btn.setObjectName("title_min_btn")
-        min_btn.setFixedSize(46, 32)
+        min_btn.setObjectName("top_min_btn")
+        min_btn.setFixedSize(24, 24)
         min_btn.setCursor(Qt.PointingHandCursor)
         min_btn.clicked.connect(self.showMinimized)
         title_layout.addWidget(min_btn)
 
         close_btn = QPushButton("✕")
-        close_btn.setObjectName("title_close_btn")
-        close_btn.setFixedSize(46, 32)
+        close_btn.setObjectName("top_close_btn")
+        close_btn.setFixedSize(24, 24)
         close_btn.setCursor(Qt.PointingHandCursor)
         close_btn.clicked.connect(self.close)
         title_layout.addWidget(close_btn)
 
         main_layout.addWidget(self._title_bar)
 
-        # Menu Bar
-        self._menubar = QMenuBar()
+        self._top_toolbar = QFrame()
+        self._top_toolbar.setObjectName("top_toolbar")
+        toolbar_layout = QHBoxLayout(self._top_toolbar)
+        toolbar_layout.setContentsMargins(10, 6, 10, 6)
+        toolbar_layout.setSpacing(6)
+
+        new_chat_btn = QPushButton("+")
+        new_chat_btn.setObjectName("toolbar_btn")
+        new_chat_btn.setFixedSize(26, 26)
+        new_chat_btn.setCursor(Qt.PointingHandCursor)
+        new_chat_btn.setToolTip("Yeni sohbet")
+        new_chat_btn.clicked.connect(self._on_new_chat)
+        toolbar_layout.addWidget(new_chat_btn)
+
+        history_btn = QPushButton("↺")
+        history_btn.setObjectName("toolbar_btn")
+        history_btn.setFixedSize(26, 26)
+        history_btn.setCursor(Qt.PointingHandCursor)
+        history_btn.setToolTip("Sohbeti temizle")
+        history_btn.clicked.connect(self._on_new_chat)
+        toolbar_layout.addWidget(history_btn)
+
+        menu_btn = QPushButton("⋯")
+        menu_btn.setObjectName("toolbar_btn")
+        menu_btn.setFixedSize(26, 26)
+        menu_btn.setCursor(Qt.PointingHandCursor)
+        menu_btn.setToolTip("Menü")
+        menu_btn.clicked.connect(self._show_quick_menu)
+        toolbar_layout.addWidget(menu_btn)
+
+        toolbar_layout.addStretch()
+        main_layout.addWidget(self._top_toolbar)
+        self._menubar = QMenuBar(self)
         self._setup_menus()
-        main_layout.addWidget(self._menubar)
 
         # Chat Widget - Ana bileşen
         self._chat_widget = ChatWidget()
@@ -221,14 +251,13 @@ class MainWindow(QMainWindow):
         self._chat_widget.cancel_requested.connect(self._on_cancel_requested)
         main_layout.addWidget(self._chat_widget, 1)
 
-        # Minimal Status Bar
-        self._status_bar = QFrame()
-        self._status_bar.setObjectName("custom_status_bar")
-        self._status_bar.setFixedHeight(25)
-        status_layout = QHBoxLayout(self._status_bar)
-        status_layout.setContentsMargins(10, 0, 10, 0)
+        status_frame = QFrame()
+        status_frame.setObjectName("custom_status_bar")
+        status_layout = QHBoxLayout(status_frame)
+        status_layout.setContentsMargins(10, 6, 10, 6)
+        status_layout.setSpacing(8)
         self._setup_statusbar(status_layout)
-        main_layout.addWidget(self._status_bar)
+        main_layout.addWidget(status_frame)
 
         self.setCentralWidget(main_widget)
 
@@ -257,21 +286,31 @@ class MainWindow(QMainWindow):
         provider_group.setExclusive(True)
 
         self._action_openrouter = QAction("OpenRouter", self, checkable=True)
+        self._action_openrouter.setData("openrouter")
         self._action_openrouter.setActionGroup(provider_group)
         self._provider_menu.addAction(self._action_openrouter)
 
         self._action_ollama = QAction("Ollama", self, checkable=True)
+        self._action_ollama.setData("ollama")
         self._action_ollama.setActionGroup(provider_group)
         self._provider_menu.addAction(self._action_ollama)
 
         self._action_gemini = QAction("Gemini", self, checkable=True)
+        self._action_gemini.setData("gemini")
         self._action_gemini.setActionGroup(provider_group)
         self._provider_menu.addAction(self._action_gemini)
+
+        self._action_groq = QAction("Groq", self, checkable=True)
+        self._action_groq.setData("groq")
+        self._action_groq.setActionGroup(provider_group)
+        self._provider_menu.addAction(self._action_groq)
 
         if self._settings.provider == "ollama":
             self._action_ollama.setChecked(True)
         elif self._settings.provider == "gemini":
             self._action_gemini.setChecked(True)
+        elif self._settings.provider == "groq":
+            self._action_groq.setChecked(True)
         else:
             self._action_openrouter.setChecked(True)
 
@@ -351,6 +390,8 @@ class MainWindow(QMainWindow):
         """Minimal durum cubugunu olusturur."""
         self._lo_status_label = QLabel()
         self._llm_status_label = QLabel()
+        self._lo_status_label.setObjectName("lo_status_label")
+        self._llm_status_label.setObjectName("llm_status_label")
 
         self._lo_status_label.setContentsMargins(0, 0, 8, 0)
         self._llm_status_label.setContentsMargins(8, 0, 0, 0)
@@ -394,13 +435,10 @@ class MainWindow(QMainWindow):
 
     def _on_provider_changed(self, action: QAction):
         """Saglayici degistiginde cagirilir."""
-        text = action.text().lower()
-        if text == "ollama":
-            self._settings.provider = "ollama"
-        elif text == "gemini":
-            self._settings.provider = "gemini"
-        else:
-            self._settings.provider = "openrouter"
+        provider = action.data()
+        if provider not in ("openrouter", "ollama", "gemini", "groq"):
+            provider = "openrouter"
+        self._settings.provider = provider
         self._settings.save()
         self._init_provider()
         self._update_status_bar()
@@ -413,6 +451,8 @@ class MainWindow(QMainWindow):
                 self._provider = OllamaProvider()
             elif self._settings.provider == "gemini":
                 self._provider = GeminiProvider()
+            elif self._settings.provider == "groq":
+                self._provider = GroqProvider()
             else:
                 self._provider = OpenRouterProvider()
             self._update_status_bar()
@@ -434,6 +474,9 @@ class MainWindow(QMainWindow):
         elif self._settings.provider == "gemini":
             provider_name = "Gemini"
             model_name = self._settings.gemini_model
+        elif self._settings.provider == "groq":
+            provider_name = "Groq"
+            model_name = self._settings.groq_model
         else:
             provider_name = "OpenRouter"
             model_name = self._settings.openrouter_model
@@ -442,23 +485,31 @@ class MainWindow(QMainWindow):
 
     def _update_status_bar(self):
         """Durum cubugu etiketlerini gunceller."""
+        if not hasattr(self, "_lo_status_label") or not hasattr(self, "_llm_status_label"):
+            return
+
         lang = self._current_lang
 
         if self._bridge and self._bridge.is_connected:
             self._lo_status_label.setText(f"  {get_text('status_lo_connected', lang)}")
-            self._lo_status_label.setStyleSheet("color: #44bb44; font-weight: bold;")
+            self._lo_status_label.setProperty("state", "ok")
         else:
             self._lo_status_label.setText(f"  {get_text('status_lo_disconnected', lang)}")
-            self._lo_status_label.setStyleSheet("color: #bb4444; font-weight: bold;")
+            self._lo_status_label.setProperty("state", "error")
 
         provider_name = self._settings.provider.capitalize()
         if self._provider:
             self._llm_status_label.setText(f"LLM: {provider_name}  ")
-            self._llm_status_label.setStyleSheet("color: #44bb44;")
+            self._llm_status_label.setProperty("state", "ok")
         else:
             error_text = get_text("status_llm_error", lang)
             self._llm_status_label.setText(f"LLM: {provider_name} {error_text}  ")
-            self._llm_status_label.setStyleSheet("color: #bb4444;")
+            self._llm_status_label.setProperty("state", "error")
+
+        self._lo_status_label.style().unpolish(self._lo_status_label)
+        self._lo_status_label.style().polish(self._lo_status_label)
+        self._llm_status_label.style().unpolish(self._llm_status_label)
+        self._llm_status_label.style().polish(self._llm_status_label)
 
     def _open_settings(self):
         """Ayarlar dialogunu acar."""
@@ -473,6 +524,23 @@ class MainWindow(QMainWindow):
         """Yardim dialogunu acar."""
         dialog = HelpDialog(self, self._current_lang)
         dialog.exec_()
+
+    def _show_quick_menu(self):
+        """Üst bardaki üç nokta menüsünü gösterir."""
+        menu = QMenu(self)
+        menu.addAction(self._settings_action)
+        menu.addAction(self._help_action)
+        menu.addSeparator()
+        menu.addAction(self._quit_action)
+        sender = self.sender()
+        if isinstance(sender, QPushButton):
+            menu.exec_(sender.mapToGlobal(sender.rect().bottomLeft()))
+
+    def _on_new_chat(self):
+        """Yeni sohbet görünümü için mevcut konuşmayı temizler."""
+        self._conversation = []
+        if hasattr(self, "_chat_widget"):
+            self._chat_widget.clear_chat()
 
     def _on_message_sent(self, text: str):
         """Kullanici mesaji gonderildiginde cagirilir."""
@@ -577,7 +645,6 @@ class MainWindow(QMainWindow):
         """Stream parçası geldiğinde çağrılır."""
         if not self._stream_started:
             self._stream_started = True
-            self._chat_widget.hide_loading()
 
         content = part.get("content") or ""
         tool_calls = part.get("tool_calls")

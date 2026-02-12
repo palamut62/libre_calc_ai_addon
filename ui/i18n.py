@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 TRANSLATIONS = {
     "tr": {
-        "window_title": "Calc AI",
+        "window_title": "ArasAI",
         # Menus
         "menu_file": "Dosya",
         "menu_settings": "Ayarlar...",
@@ -40,6 +40,7 @@ TRANSLATIONS = {
         "settings_logging": "Yerel loglar açık",
         "settings_provider": "LLM Sağlayıcı:",
         "settings_api_key": "API Anahtarı:",
+        "settings_groq_api_key": "Groq API Anahtarı:",
         "settings_gemini_api_key": "Gemini API Anahtarı:",
         "settings_model": "Model:",
         "settings_openrouter_free_only": "Sadece ücretsiz modelleri göster",
@@ -47,6 +48,7 @@ TRANSLATIONS = {
         "settings_fetch_models": "Modelleri Getir",
         "settings_ollama_url": "Ollama URL:",
         "settings_api_key_required": "Modelleri getirmek için önce API anahtarını girin.",
+        "settings_groq_api_key_required": "Groq modellerini getirmek için API anahtarını girin.",
         "settings_gemini_api_key_required": "Gemini modellerini getirmek için API anahtarını girin.",
         "settings_models_empty": "Model listesi boş döndü.",
         "settings_no_tool_support": "Bu model araç desteği sağlamıyor.",
@@ -65,17 +67,17 @@ TRANSLATIONS = {
         "msg_llm_error": "Hata oluştu: {}",
         "msg_generation_cancelled": "Yanıt durduruldu.",
         # Chat Widget
-        "chat_placeholder": "Calc AI ile konuşun... (Ctrl+Enter)",
+        "chat_placeholder": "ArasAI ile konuşun... (Ctrl+Enter)",
         "chat_send": "Gönder",
         "chat_clear": "Temizle",
         "chat_stop": "Durdur",
-        "chat_thinking": "Calc AI düşünüyor",
+        "chat_thinking": "ArasAI düşünüyor",
         "chat_you": "SİZ",
         "chat_aras": "CALC AI",
         "chat_provider_model": "LLM: {provider} · {model}",
     },
     "en": {
-        "window_title": "Calc AI",
+        "window_title": "ArasAI",
         # Menus
         "menu_file": "File",
         "menu_settings": "Settings...",
@@ -108,6 +110,7 @@ TRANSLATIONS = {
         "settings_logging": "Enable local logs",
         "settings_provider": "LLM Provider:",
         "settings_api_key": "API Key:",
+        "settings_groq_api_key": "Groq API Key:",
         "settings_gemini_api_key": "Gemini API Key:",
         "settings_model": "Model:",
         "settings_openrouter_free_only": "Show free models only",
@@ -115,6 +118,7 @@ TRANSLATIONS = {
         "settings_fetch_models": "Fetch Models",
         "settings_ollama_url": "Ollama URL:",
         "settings_api_key_required": "Please enter your API key to fetch models.",
+        "settings_groq_api_key_required": "Please enter your Groq API key to fetch models.",
         "settings_gemini_api_key_required": "Please enter your Gemini API key to fetch models.",
         "settings_models_empty": "Model list returned empty.",
         "settings_no_tool_support": "This model does not support tools.",
@@ -133,11 +137,11 @@ TRANSLATIONS = {
         "msg_llm_error": "An error occurred: {}",
         "msg_generation_cancelled": "Response stopped.",
         # Chat Widget
-        "chat_placeholder": "Talk to Calc AI... (Ctrl+Enter)",
+        "chat_placeholder": "Talk to ArasAI... (Ctrl+Enter)",
         "chat_send": "Send",
         "chat_clear": "Clear",
         "chat_stop": "Stop",
-        "chat_thinking": "Calc AI is thinking",
+        "chat_thinking": "ArasAI is thinking",
         "chat_you": "YOU",
         "chat_aras": "CALC AI",
         "chat_provider_model": "LLM: {provider} · {model}",

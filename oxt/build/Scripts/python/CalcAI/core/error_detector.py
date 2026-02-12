@@ -3,6 +3,8 @@
 import logging
 import re
 
+from .address_utils import parse_address
+
 try:
     from com.sun.star.table.CellContentType import EMPTY, VALUE, TEXT, FORMULA
     UNO_AVAILABLE = True
@@ -235,7 +237,7 @@ class ErrorDetector:
             precedents = self.inspector.get_cell_precedents(address)
 
             # Hücreyi al ve hata türünü belirle
-            col, row = self.inspector._parse_address(address)
+            col, row = parse_address(address)
             sheet = self.bridge.get_active_sheet()
             cell = sheet.getCellByPosition(col, row)
             error_info = self.get_error_type(cell)
@@ -278,6 +280,35 @@ class ErrorDetector:
                 "Hata açıklama hatası (%s): %s", address, str(e)
             )
             raise
+
+    def detect_and_explain(self, range_str: str = None) -> dict:
+        """Aralıktaki formül hatalarını tespit edip açıklamalarla döndürür."""
+        errors = self.detect_errors(range_str)
+        detailed = []
+
+        for item in errors:
+            address = item.get("address")
+            if not address:
+                continue
+            try:
+                detailed.append(self.explain_error(address))
+            except Exception:
+                # Tek bir hücrede açıklama alınamazsa temel bilgiyle devam et
+                detailed.append(
+                    {
+                        "address": address,
+                        "formula": item.get("formula", ""),
+                        "error": item.get("error"),
+                        "precedents": [],
+                        "suggestion": "Hata açıklandıramadı; temel hata bilgisi gösterildi.",
+                    }
+                )
+
+        return {
+            "range": range_str or "used_area",
+            "error_count": len(detailed),
+            "errors": detailed,
+        }
 
     @staticmethod
     def _generate_suggestion(error_info: dict, precedents: list) -> str:

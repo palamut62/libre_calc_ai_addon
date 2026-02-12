@@ -1,9 +1,10 @@
 """Uygulama ikonları yönetimi."""
 
-import os
 from pathlib import Path
 
-from PyQt5.QtGui import QIcon
+from PyQt5.QtCore import QByteArray, Qt
+from PyQt5.QtGui import QIcon, QPainter, QPixmap
+from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import QStyle, QWidget
 
 # İkon dosyalarının bulunduğu dizin
@@ -50,7 +51,30 @@ FALLBACK_ICONS = {
 }
 
 
-def get_icon(name: str, widget: QWidget = None) -> QIcon:
+def _build_colored_svg_icon(icon_path: Path, color: str) -> QIcon:
+    """SVG dosyasını belirtilen renkte QIcon'a dönüştürür."""
+    try:
+        svg_text = icon_path.read_text(encoding="utf-8")
+    except OSError:
+        return QIcon(str(icon_path))
+
+    svg_text = svg_text.replace("currentColor", color)
+    renderer = QSvgRenderer(QByteArray(svg_text.encode("utf-8")))
+    if not renderer.isValid():
+        return QIcon(str(icon_path))
+
+    icon = QIcon()
+    for size in (14, 16, 20, 24, 28, 32):
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        icon.addPixmap(pixmap)
+    return icon
+
+
+def get_icon(name: str, widget: QWidget = None, color: str = "") -> QIcon:
     """İkon adına göre QIcon döndürür.
 
     Args:
@@ -63,6 +87,8 @@ def get_icon(name: str, widget: QWidget = None) -> QIcon:
     if name in ICON_MAP:
         icon_path = ICONS_DIR / ICON_MAP[name]
         if icon_path.exists():
+            if color and icon_path.suffix.lower() == ".svg":
+                return _build_colored_svg_icon(icon_path, color)
             return QIcon(str(icon_path))
 
     # Fallback: Qt standart ikonu

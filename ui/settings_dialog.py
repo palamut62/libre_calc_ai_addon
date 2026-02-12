@@ -26,6 +26,7 @@ from config.settings import Settings
 from llm.openrouter_provider import OpenRouterProvider
 from llm.ollama_provider import OllamaProvider
 from llm.gemini_provider import GeminiProvider
+from llm.groq_provider import GroqProvider
 from .i18n import get_text
 
 class SettingsDialog(QDialog):
@@ -60,6 +61,7 @@ class SettingsDialog(QDialog):
         self._price_cache_ollama = {}
         self._last_price_model = ""
         self._all_openrouter_models = []
+        self._all_groq_models = []
         
         self._setup_ui()
         self._load_settings()
@@ -68,6 +70,14 @@ class SettingsDialog(QDialog):
     def _setup_ui(self):
         """Arayuz elemanlarini olusturur."""
         layout = QVBoxLayout(self)
+
+        self._dialog_title = QLabel("ArasAI")
+        self._dialog_title.setObjectName("dialog_title")
+        layout.addWidget(self._dialog_title)
+
+        self._dialog_subtitle = QLabel("")
+        self._dialog_subtitle.setObjectName("dialog_subtitle")
+        layout.addWidget(self._dialog_subtitle)
 
         self._tabs = QTabWidget()
         layout.addWidget(self._tabs)
@@ -82,13 +92,16 @@ class SettingsDialog(QDialog):
 
         self._provider_bg = QButtonGroup(self)
         self._radio_openrouter = QRadioButton("OpenRouter (Bulut)")
+        self._radio_groq = QRadioButton("Groq (Bulut)")
         self._radio_ollama = QRadioButton("Ollama (Yerel)")
         self._radio_gemini = QRadioButton("Gemini (Google)")
         self._provider_bg.addButton(self._radio_openrouter, 0)
-        self._provider_bg.addButton(self._radio_ollama, 1)
-        self._provider_bg.addButton(self._radio_gemini, 2)
+        self._provider_bg.addButton(self._radio_groq, 1)
+        self._provider_bg.addButton(self._radio_ollama, 2)
+        self._provider_bg.addButton(self._radio_gemini, 3)
 
         provider_layout.addWidget(self._radio_openrouter)
+        provider_layout.addWidget(self._radio_groq)
         provider_layout.addWidget(self._radio_ollama)
         provider_layout.addWidget(self._radio_gemini)
         self._provider_group.setLayout(provider_layout)
@@ -103,6 +116,12 @@ class SettingsDialog(QDialog):
         self._api_key_edit.setEchoMode(QLineEdit.Password)
         self._api_key_label = QLabel()
         api_form.addRow(self._api_key_label, self._api_key_edit)
+
+        # Groq API Key
+        self._groq_key_edit = QLineEdit()
+        self._groq_key_edit.setEchoMode(QLineEdit.Password)
+        self._groq_key_label = QLabel()
+        api_form.addRow(self._groq_key_label, self._groq_key_edit)
 
         # Gemini API Key
         self._gemini_key_edit = QLineEdit()
@@ -162,11 +181,8 @@ class SettingsDialog(QDialog):
 
         # Tool desteği uyarı label'ı
         self._tool_warning_label = QLabel()
+        self._tool_warning_label.setObjectName("tool_warning_label")
         self._tool_warning_label.setWordWrap(True)
-        self._tool_warning_label.setStyleSheet(
-            "QLabel { color: #f0ad4e; padding: 8px; background: rgba(240, 173, 78, 0.1); "
-            "border-radius: 4px; }"
-        )
         self._tool_warning_label.setVisible(False)
         api_form.addRow("", self._tool_warning_label)
 
@@ -252,6 +268,9 @@ class SettingsDialog(QDialog):
         lang = self._current_lang
         
         self.setWindowTitle(get_text("settings_title", lang))
+        self._dialog_subtitle.setText(
+            "Uygulama ayarlarını düzenleyin" if lang == "tr" else "Configure application settings"
+        )
         
         self._tabs.setTabText(0, get_text("settings_tab_llm", lang))
         self._tabs.setTabText(1, get_text("settings_tab_lo", lang))
@@ -260,6 +279,7 @@ class SettingsDialog(QDialog):
         self._provider_group.setTitle(get_text("settings_provider", lang))
         self._api_group.setTitle("API") # Universal
         self._api_key_label.setText(get_text("settings_api_key", lang))
+        self._groq_key_label.setText(get_text("settings_groq_api_key", lang))
         self._gemini_key_label.setText(get_text("settings_gemini_api_key", lang))
         self._ollama_url_label.setText(get_text("settings_ollama_url", lang))
         self._model_label.setText(get_text("settings_model", lang))
@@ -302,12 +322,18 @@ class SettingsDialog(QDialog):
     def _on_provider_changed(self):
         """Provider degistiginde UI elemanlarini gunceller."""
         self._save_price_cache_for_current_model()
+        is_openrouter = self._radio_openrouter.isChecked()
+        is_groq = self._radio_groq.isChecked()
         is_ollama = self._radio_ollama.isChecked()
         is_gemini = self._radio_gemini.isChecked()
 
         # OpenRouter için API key göster
-        self._api_key_label.setVisible(not is_ollama and not is_gemini)
-        self._api_key_edit.setVisible(not is_ollama and not is_gemini)
+        self._api_key_label.setVisible(is_openrouter)
+        self._api_key_edit.setVisible(is_openrouter)
+
+        # Groq için API key göster
+        self._groq_key_label.setVisible(is_groq)
+        self._groq_key_edit.setVisible(is_groq)
 
         # Gemini için API key göster
         self._gemini_key_label.setVisible(is_gemini)
@@ -319,7 +345,7 @@ class SettingsDialog(QDialog):
 
         # Modelleri getir butonu her zaman aktif
         self._fetch_models_btn.setEnabled(True)
-        self._openrouter_free_only_check.setVisible(not is_ollama and not is_gemini)
+        self._openrouter_free_only_check.setVisible(is_openrouter)
 
         # Model listesini güncelle
         self._update_model_list()
@@ -390,6 +416,17 @@ class SettingsDialog(QDialog):
                     "gemini-1.5-pro",
                     "gemini-1.0-pro",
                 ])
+        elif self._radio_groq.isChecked():
+            cached = s.groq_models
+            if cached:
+                self._all_groq_models = sorted(cached)
+            else:
+                self._all_groq_models = sorted([
+                    "llama-3.3-70b-versatile",
+                    "llama-3.1-8b-instant",
+                    "mixtral-8x7b-32768",
+                ])
+            self._model_combo.addItems(self._all_groq_models)
         else:
             # OpenRouter modelleri
             cached = s.openrouter_models
@@ -412,15 +449,19 @@ class SettingsDialog(QDialog):
             self._radio_ollama.setChecked(True)
         elif s.provider == "gemini":
             self._radio_gemini.setChecked(True)
+        elif s.provider == "groq":
+            self._radio_groq.setChecked(True)
         else:
             self._radio_openrouter.setChecked(True)
 
         # Provider değişikliğinde UI'yi güncelle
         self._radio_openrouter.toggled.connect(self._on_provider_changed)
+        self._radio_groq.toggled.connect(self._on_provider_changed)
         self._radio_ollama.toggled.connect(self._on_provider_changed)
         self._radio_gemini.toggled.connect(self._on_provider_changed)
 
         self._api_key_edit.setText(s.openrouter_api_key)
+        self._groq_key_edit.setText(s.groq_api_key)
         self._gemini_key_edit.setText(s.gemini_api_key)
         self._ollama_url_edit.setText(s.ollama_base_url)
 
@@ -431,6 +472,8 @@ class SettingsDialog(QDialog):
             model = s.ollama_model
         elif s.provider == "gemini":
             model = s.gemini_model
+        elif s.provider == "groq":
+            model = s.groq_model
         else:
             model = s.openrouter_model
         self._set_model_combo_value(model)
@@ -471,6 +514,10 @@ class SettingsDialog(QDialog):
             s.provider = "gemini"
             s.set("gemini_api_key", self._gemini_key_edit.text().strip())
             s.set("gemini_default_model", self._selected_model_id())
+        elif self._radio_groq.isChecked():
+            s.provider = "groq"
+            s.set("groq_api_key", self._groq_key_edit.text().strip())
+            s.set("groq_default_model", self._selected_model_id())
         else:
             s.provider = "openrouter"
             s.set("openrouter_api_key", self._api_key_edit.text().strip())
@@ -519,8 +566,9 @@ class SettingsDialog(QDialog):
         """Secili provider'dan mevcut modelleri getirir."""
         is_ollama = self._radio_ollama.isChecked()
         is_gemini = self._radio_gemini.isChecked()
+        is_groq = self._radio_groq.isChecked()
 
-        if not is_ollama and not is_gemini:
+        if self._radio_openrouter.isChecked():
             # OpenRouter için API key gerekli
             api_key = self._api_key_edit.text().strip()
             if not api_key:
@@ -528,6 +576,15 @@ class SettingsDialog(QDialog):
                     self,
                     get_text("settings_title", self._current_lang),
                     get_text("settings_api_key_required", self._current_lang)
+                )
+                return
+        if is_groq:
+            api_key = self._groq_key_edit.text().strip()
+            if not api_key:
+                QMessageBox.warning(
+                    self,
+                    get_text("settings_title", self._current_lang),
+                    get_text("settings_groq_api_key_required", self._current_lang)
                 )
                 return
         if is_gemini:
@@ -555,6 +612,11 @@ class SettingsDialog(QDialog):
                 provider = GeminiProvider()
                 models = provider.get_available_models()
                 cache_key = "gemini_models"
+            elif is_groq:
+                self._settings.set("groq_api_key", self._groq_key_edit.text().strip())
+                provider = GroqProvider()
+                models = provider.get_available_models()
+                cache_key = "groq_models"
             else:
                 # OpenRouter API anahtarını geçici olarak kaydet
                 self._settings.set("openrouter_api_key", self._api_key_edit.text().strip())
@@ -568,7 +630,7 @@ class SettingsDialog(QDialog):
 
             if models:
                 selected = self._selected_model_id()
-                if not is_ollama and not is_gemini:
+                if self._radio_openrouter.isChecked():
                     self._all_openrouter_models = sorted(models)
                     self._apply_openrouter_model_filter(selected_model=selected)
                 else:
@@ -577,7 +639,7 @@ class SettingsDialog(QDialog):
 
                 # Modelleri önbelleğe kaydet
                 self._settings.set(cache_key, models)
-                if not is_ollama and not is_gemini:
+                if self._radio_openrouter.isChecked():
                     self._settings.openrouter_model_prices = self._price_cache_openrouter
                 self._settings.save()
 

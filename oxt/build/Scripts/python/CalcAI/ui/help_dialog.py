@@ -11,7 +11,8 @@ from PyQt5.QtWidgets import (
     QWidget,
     QFrame,
 )
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QDesktopServices
+from PyQt5.QtCore import QUrl
 
 from .i18n import get_text
 
@@ -26,7 +27,7 @@ class HelpDialog(QDialog):
 
     def _setup_ui(self):
         """Arayuz elemanlarini olusturur."""
-        self.setWindowTitle("Calc AI - Yardım" if self._lang == "tr" else "Calc AI - Help")
+        self.setWindowTitle("ArasAI - Yardım" if self._lang == "tr" else "ArasAI - Help")
         self.setMinimumSize(500, 600)
         self.setMaximumSize(700, 800)
 
@@ -34,14 +35,15 @@ class HelpDialog(QDialog):
         layout.setSpacing(16)
 
         # Başlık
-        title = QLabel("Calc AI")
+        title = QLabel("ArasAI")
+        title.setObjectName("dialog_title")
         title.setFont(QFont("", 18, QFont.Bold))
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
         subtitle = QLabel("LibreOffice Calc için AI Asistanı" if self._lang == "tr" else "AI Assistant for LibreOffice Calc")
+        subtitle.setObjectName("dialog_subtitle")
         subtitle.setAlignment(Qt.AlignCenter)
-        subtitle.setStyleSheet("color: #888; margin-bottom: 10px;")
         layout.addWidget(subtitle)
 
         # Scroll Area
@@ -77,6 +79,9 @@ class HelpDialog(QDialog):
             self._get_tips_text()
         )
 
+        # Bağlantılar
+        self._add_links_section(content_layout)
+
         content_layout.addStretch()
         scroll.setWidget(content)
         layout.addWidget(scroll, 1)
@@ -93,15 +98,45 @@ class HelpDialog(QDialog):
     def _add_section(self, layout, title: str, content: str):
         """Bölüm başlığı ve içeriği ekler."""
         title_label = QLabel(title)
+        title_label.setObjectName("help_section_title")
         title_label.setFont(QFont("", 12, QFont.Bold))
         title_label.setStyleSheet("margin-top: 10px;")
         layout.addWidget(title_label)
 
         content_label = QLabel(content)
+        content_label.setObjectName("help_section_content")
         content_label.setWordWrap(True)
         content_label.setTextFormat(Qt.RichText)
         content_label.setStyleSheet("padding-left: 10px; line-height: 1.5;")
         layout.addWidget(content_label)
+
+    def _add_links_section(self, layout):
+        """Sosyal/profil bağlantılarını ekler."""
+        title = "Bağlantılar" if self._lang == "tr" else "Links"
+        title_label = QLabel(title)
+        title_label.setObjectName("help_section_title")
+        title_label.setFont(QFont("", 12, QFont.Bold))
+        layout.addWidget(title_label)
+
+        links_row = QHBoxLayout()
+        links_row.setSpacing(10)
+
+        github_btn = QPushButton("GitHub / palamut62")
+        github_btn.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl("https://github.com/palamut62"))
+        )
+        links_row.addWidget(github_btn)
+
+        x_btn = QPushButton("X / palamut62")
+        x_btn.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl("https://x.com/palamut62"))
+        )
+        links_row.addWidget(x_btn)
+        links_row.addStretch()
+
+        links_widget = QWidget()
+        links_widget.setLayout(links_row)
+        layout.addWidget(links_widget)
 
     def _get_features_text(self) -> str:
         if self._lang == "tr":
