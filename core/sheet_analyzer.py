@@ -17,6 +17,23 @@ logger = logging.getLogger(__name__)
 class SheetAnalyzer:
     """Çalışma sayfasının yapısını ve verilerini analiz eden sınıf."""
 
+    @staticmethod
+    def _cell_type_name(cell_type) -> str:
+        enum_value = getattr(cell_type, "value", None)
+        if enum_value is not None:
+            name = str(enum_value).upper()
+            if name in ("EMPTY", "VALUE", "TEXT", "FORMULA"):
+                return name.lower()
+        if cell_type == EMPTY:
+            return "empty"
+        if cell_type == VALUE:
+            return "value"
+        if cell_type == TEXT:
+            return "text"
+        if cell_type == FORMULA:
+            return "formula"
+        return "unknown"
+
     def __init__(self, bridge):
         """
         SheetAnalyzer başlatıcı.
@@ -104,7 +121,7 @@ class SheetAnalyzer:
                 is_empty = True
                 for col in range(end_col + 1):
                     cell = sheet.getCellByPosition(col, row)
-                    if cell.getType() != EMPTY:
+                    if self._cell_type_name(cell.getType()) != "empty":
                         is_empty = False
                         break
                 row_empty.append(is_empty)
@@ -161,7 +178,7 @@ class SheetAnalyzer:
         for row in range(start_row, end_row + 1):
             for col in range(max_col + 1):
                 cell = sheet.getCellByPosition(col, row)
-                if cell.getType() != EMPTY:
+                if self._cell_type_name(cell.getType()) != "empty":
                     min_col = min(min_col, col)
                     actual_max_col = max(actual_max_col, col)
 
@@ -195,7 +212,7 @@ class SheetAnalyzer:
             for row in range(start[1], end[1] + 1):
                 for col in range(start[0], end[0] + 1):
                     cell = sheet.getCellByPosition(col, row)
-                    if cell.getType() == EMPTY:
+                    if self._cell_type_name(cell.getType()) == "empty":
                         col_str = self.bridge._index_to_column(col)
                         empty_cells.append(f"{col_str}{row + 1}")
 
@@ -236,12 +253,12 @@ class SheetAnalyzer:
             values = []
             for row in range(end_row + 1):
                 cell = sheet.getCellByPosition(col_index, row)
-                cell_type = cell.getType()
-                if cell_type == VALUE or (
-                    cell_type == FORMULA and cell.getValue() != 0
+                cell_type_name = self._cell_type_name(cell.getType())
+                if cell_type_name == "value" or (
+                    cell_type_name == "formula" and cell.getValue() != 0
                 ):
                     values.append(cell.getValue())
-                elif cell_type == FORMULA:
+                elif cell_type_name == "formula":
                     # Formül sonucu 0 olabilir, kontrol et
                     try:
                         val = cell.getValue()

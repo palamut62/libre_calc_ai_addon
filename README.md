@@ -15,11 +15,13 @@ An intelligent, modern AI assistant sidebar for LibreOffice Calc, designed with 
 
 ### AI Providers
 *   **OpenRouter (Cloud)**: Access to Claude, GPT, Gemini, Llama and 100+ models via API.
+*   **Groq (Cloud)**: Ultra-fast inference via Groq API (e.g. `llama-3.3-70b-versatile`, `mixtral-8x7b-32768`).
+*   **NVIDIA NIM (Cloud)**: NVIDIA-hosted models via `integrate.api.nvidia.com` (e.g. `meta/llama-3.3-70b-instruct`, `nvidia/llama-3.1-nemotron-70b-instruct`). Get your API key at [build.nvidia.com](https://build.nvidia.com).
+*   **Gemini (Google)**: Google Gemini models via API.
 *   **Ollama (Local)**: Run AI models locally for privacy and offline use.
     *   Automatic model fetching from Ollama server
     *   Tool support detection with visual warnings
     *   Fallback mode for models without tool support
-*   **Gemini (Google)**: Google Gemini models via API.
 
 ### Spreadsheet Integration
 *   **Live Selection Tracking**: The status bar instantly reflects your selection (`A1`, `A1:B5`, or `A1, C5`).
@@ -82,7 +84,7 @@ An intelligent, modern AI assistant sidebar for LibreOffice Calc, designed with 
     Create a `.env` file in the root directory (optional - can also configure via Settings UI):
 
     ```env
-    # Options: openrouter, ollama
+    # Options: openrouter, ollama, gemini, groq, nvidia
     LLM_PROVIDER=openrouter
 
     # If using OpenRouter
@@ -134,10 +136,11 @@ Or search for "LibreCalc AI Assistant" in your application menu.
 
 You can also install ArasAI as a native LibreOffice extension:
 
-1. Build the extension: `cd oxt && python build.py`
+1. Build the extension: `cd oxt && bash build_oxt.sh`
 2. Install the generated `.oxt` file via **Tools > Extension Manager** in LibreOffice
 3. Restart LibreOffice
-4. Access ArasAI from the **Tools > Macros** menu or assign it to a toolbar button
+4. Open Calc and use the **AI Assistant** menu
+5. If PyQt5/httpx/python-dotenv are missing, the extension offers automatic installation
 
 ### Settings
 
@@ -176,6 +179,30 @@ For full functionality (cell editing, formula writing), use models with tool/fun
 *   **Formulas**: "Write a formula in C1 to sum A1 and B1."
 *   **Analysis**: "What does the formula in D5 do? Explain it simply."
 *   **Errors**: "Why is there a #DIV/0! error in column E?"
+
+## Testing
+
+For LibreOffice integration regression checks, use the smoke tests in `tests/`:
+
+1. Start isolated headless LibreOffice, run full test suite, then close it:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File tests\run_lo_smoke.ps1
+   ```
+
+2. Run the same tests against an already-running LibreOffice listener (default `127.0.0.1:2002`):
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File tests\run_smoke_against_running_lo.ps1 -LoHost 127.0.0.1 -Port 2002
+   ```
+
+3. Stability loop (run smoke test multiple times):
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File tests\run_lo_smoke_loop.ps1 -Count 3
+   ```
+
+Latest local validation: `23/23 PASS`.
 
 ## 🔧 Architecture
 

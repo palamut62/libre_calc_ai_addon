@@ -632,7 +632,11 @@ class CellManipulator:
                     )
 
                 db_range = db_ranges.getByName(range_name)
-                db_range.setAutoFilter(True)
+                try:
+                    db_range.setAutoFilter(True)
+                except AttributeError:
+                    # Some UNO bindings expose this as property, not method.
+                    db_range.setPropertyValue("AutoFilter", True)
                 db_range.refresh()
 
                 logger.info("AutoFilter uygulandı: %s", range_str.upper())

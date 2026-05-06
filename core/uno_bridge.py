@@ -2,7 +2,9 @@
 
 import logging
 import os
+import sys
 import time
+from pathlib import Path
 
 from .address_utils import (
     column_to_index,
@@ -11,15 +13,119 @@ from .address_utils import (
     parse_range_string,
 )
 
-try:
-    import uno
-    from com.sun.star.beans import PropertyValue
-    from com.sun.star.connection import NoConnectException
-    UNO_AVAILABLE = True
-except ImportError:
-    UNO_AVAILABLE = False
-
 logger = logging.getLogger(__name__)
+_DLL_DIR_HANDLES = []
+uno = None
+PropertyValue = None
+NoConnectException = Exception
+UNO_AVAILABLE = False
+_UNO_IMPORT_ERROR = None
+
+
+def _add_sys_path_if_dir(path: str):
+    if path and os.path.isdir(path) and path not in sys.path:
+        sys.path.insert(0, path)
+
+
+def _windows_add_dll_dir(path: str):
+    if sys.platform != "win32" or not path:
+        return
+    if not hasattr(os, "add_dll_directory"):
+        return
+    try:
+        _DLL_DIR_HANDLES.append(os.add_dll_directory(path))
+    except OSError:
+        pass
+
+
+def _lo_program_candidates() -> list[str]:
+    candidates = []
+
+    for key in ("UNO_PATH", "LIBREOFFICE_PROGRAM_PATH"):
+        value = os.environ.get(key, "")
+        if value:
+            candidates.append(value)
+
+    ure_bootstrap = os.environ.get("URE_BOOTSTRAP", "")
+    marker = "vnd.sun.star.pathname:"
+    if ure_bootstrap.startswith(marker):
+        # Example:
+        # vnd.sun.star.pathname:C:\Program Files\LibreOffice\program\fundamental.ini
+        ini_path = ure_bootstrap[len(marker):]
+        if ini_path:
+            candidates.append(str(Path(ini_path).parent))
+
+    if sys.platform == "win32":
+        pf = os.environ.get("PROGRAMFILES", r"C:\Program Files")
+        pf86 = os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
+        candidates.extend(
+            [
+                os.path.join(pf, "LibreOffice", "program"),
+                os.path.join(pf86, "LibreOffice", "program"),
+            ]
+        )
+    else:
+        candidates.extend(
+            [
+                "/usr/lib/libreoffice/program",
+                "/usr/lib64/libreoffice/program",
+                "/opt/libreoffice/program",
+                "/Applications/LibreOffice.app/Contents/Resources",
+            ]
+        )
+
+    # Preserve order, remove duplicates
+    seen = set()
+    uniq = []
+    for c in candidates:
+        c_norm = os.path.normpath(c)
+        if c_norm in seen:
+            continue
+        seen.add(c_norm)
+        uniq.append(c_norm)
+    return uniq
+
+
+def _try_import_uno(enable_bootstrap: bool = False):
+    """Try importing UNO safely.
+
+    Note:
+    On Windows, loading pyuno from a mismatched external Python can crash
+    the process (access violation). Therefore path bootstrap is opt-in.
+    """
+    try:
+        import uno as _uno
+        from com.sun.star.beans import PropertyValue as _PropertyValue
+        from com.sun.star.connection import NoConnectException as _NoConnectException
+        return _uno, _PropertyValue, _NoConnectException, True, None
+    except Exception as exc:
+        first_error = exc
+
+    if not enable_bootstrap:
+        return None, None, None, False, first_error
+
+    for program_dir in _lo_program_candidates():
+        if not os.path.isdir(program_dir):
+            continue
+
+        _add_sys_path_if_dir(program_dir)
+        _windows_add_dll_dir(program_dir)
+
+        # If URE_BOOTSTRAP is missing, set it from fundamental.ini
+        fundamental_ini = Path(program_dir) / "fundamental.ini"
+        if fundamental_ini.exists() and not os.environ.get("URE_BOOTSTRAP"):
+            os.environ["URE_BOOTSTRAP"] = f"vnd.sun.star.pathname:{fundamental_ini}"
+
+        try:
+            import uno as _uno
+            from com.sun.star.beans import PropertyValue as _PropertyValue
+            from com.sun.star.connection import NoConnectException as _NoConnectException
+            logger.info("UNO import bootstrap successful from: %s", program_dir)
+            return _uno, _PropertyValue, _NoConnectException, True, None
+        except Exception:
+            continue
+
+    return None, None, None, False, first_error
 
 
 class LibreOfficeBridge:
@@ -40,8 +146,8 @@ class LibreOfficeBridge:
         self._context = None
         self._desktop = None
         self._connected = False
-        self._max_retries = 5
-        self._retry_delay = 3.0
+        self._max_retries = 3
+        self._retry_delay = 1.0
 
         # Bağlantı tipini ortam değişkenlerinden oku
         self._connect_type = os.environ.get("LO_CONNECT_TYPE", "socket")
@@ -79,59 +185,99 @@ class LibreOfficeBridge:
         Raises:
             RuntimeError: UNO modülü yüklü değilse.
         """
+        global uno, PropertyValue, NoConnectException, UNO_AVAILABLE, _UNO_IMPORT_ERROR
+        if not UNO_AVAILABLE:
+            bootstrap = os.environ.get("CALCAI_UNO_BOOTSTRAP", "0") == "1"
+            uno, PropertyValue, NoConnectException, UNO_AVAILABLE, _UNO_IMPORT_ERROR = _try_import_uno(
+                enable_bootstrap=bootstrap
+            )
         if not UNO_AVAILABLE:
             raise RuntimeError(
-                "UNO modülü bulunamadı. LibreOffice Python paketlerinin "
-                "kurulu olduğundan emin olun."
+                "UNO modülü bulunamadı. "
+                "Windows'ta uyumsuz pyuno yüklemesi süreç çökmesine neden olabildiği için "
+                "otomatik bootstrap varsayılan olarak kapalıdır. "
+                "Gerekirse CALCAI_UNO_BOOTSTRAP=1 ile tekrar deneyin."
             )
 
-        # Bağlantı string'ini belirle
+        # Öncelik: LibreOffice'in resmi bootstrap yolu.
+        # Eklenti senaryosunda çalışan LO oturumuna en stabil bağlantı budur.
+        if self._connect_via_officehelper():
+            return True
+
+        # Bağlantı string'lerini belirle
+        connection_candidates = []
         if self._connect_type == "pipe":
-            connection_str = (
+            connection_candidates.append(
                 f"uno:pipe,name={self._pipe_name};"
                 f"urp;StarOffice.ComponentContext"
             )
         else:
-            connection_str = (
-                f"uno:socket,host={self.host},port={self.port};"
-                f"urp;StarOffice.ComponentContext"
-            )
-
-        for attempt in range(1, self._max_retries + 1):
-            try:
-                logger.info(
-                    "LibreOffice'e bağlanılıyor: %s (deneme %d/%d)",
-                    self._connect_type, attempt, self._max_retries,
+            hosts = [self.host, "127.0.0.1", "localhost"]
+            seen = set()
+            for host in hosts:
+                if host in seen:
+                    continue
+                seen.add(host)
+                connection_candidates.append(
+                    f"uno:socket,host={host},port={self.port};"
+                    f"urp;StarOffice.ComponentContext"
                 )
 
-                self._local_context = uno.getComponentContext()
-                self._resolver = self._local_context.ServiceManager.createInstanceWithContext(
-                    "com.sun.star.bridge.UnoUrlResolver", self._local_context
-                )
+        for connection_str in connection_candidates:
+            for attempt in range(1, self._max_retries + 1):
+                try:
+                    logger.info(
+                        "LibreOffice'e bağlanılıyor: %s (deneme %d/%d)",
+                        connection_str, attempt, self._max_retries,
+                    )
 
-                self._context = self._resolver.resolve(connection_str)
+                    self._local_context = uno.getComponentContext()
+                    self._resolver = self._local_context.ServiceManager.createInstanceWithContext(
+                        "com.sun.star.bridge.UnoUrlResolver", self._local_context
+                    )
 
-                smgr = self._context.ServiceManager
-                self._desktop = smgr.createInstanceWithContext(
-                    "com.sun.star.frame.Desktop", self._context
-                )
+                    self._context = self._resolver.resolve(connection_str)
 
-                self._connected = True
-                logger.info("LibreOffice bağlantısı başarılı (%s).", self._connect_type)
-                return True
+                    smgr = self._context.ServiceManager
+                    self._desktop = smgr.createInstanceWithContext(
+                        "com.sun.star.frame.Desktop", self._context
+                    )
 
-            except Exception as e:
-                logger.warning(
-                    "Bağlantı denemesi %d başarısız: %s", attempt, str(e)
-                )
-                if attempt < self._max_retries:
-                    time.sleep(self._retry_delay)
+                    self._connected = True
+                    logger.info("LibreOffice bağlantısı başarılı.")
+                    return True
+
+                except Exception as e:
+                    logger.warning(
+                        "Bağlantı denemesi başarısız (%s, %d/%d): %s",
+                        connection_str, attempt, self._max_retries, str(e)
+                    )
+                    if attempt < self._max_retries:
+                        time.sleep(self._retry_delay)
 
         self._connected = False
         logger.error(
             "%d deneme sonrası LibreOffice'e bağlanılamadı.", self._max_retries
         )
         return False
+
+    def _connect_via_officehelper(self) -> bool:
+        """LibreOffice runtime bootstrap ile masaüstüne bağlanmayı dener."""
+        try:
+            import officehelper
+
+            logger.info("officehelper.bootstrap() ile LibreOffice bağlantısı deneniyor.")
+            self._context = officehelper.bootstrap()
+            smgr = self._context.ServiceManager
+            self._desktop = smgr.createInstanceWithContext(
+                "com.sun.star.frame.Desktop", self._context
+            )
+            self._connected = True
+            logger.info("LibreOffice bağlantısı başarılı (officehelper bootstrap).")
+            return True
+        except Exception as e:
+            logger.warning("officehelper bootstrap bağlantısı başarısız: %s", e)
+            return False
 
     def disconnect(self):
         """LibreOffice bağlantısını kapatır."""
@@ -148,7 +294,8 @@ class LibreOfficeBridge:
             if not self.connect():
                 raise ConnectionError(
                     "LibreOffice'e bağlantı kurulamadı. "
-                    "LibreOffice'in --accept parametresiyle başlatıldığından emin olun: "
+                    "Calc belgesinin açık olduğundan emin olun. "
+                    "Harici otomasyon için gerekirse --accept ile de başlatabilirsiniz: "
                     f"soffice --calc --accept='socket,host={self.host},port={self.port};urp;'"
                 )
 
@@ -165,6 +312,20 @@ class LibreOfficeBridge:
         """
         self._ensure_connected()
         doc = self._desktop.getCurrentComponent()
+        if doc is None:
+            # Headless/remote sessions can have no "current" component even when
+            # documents are open. Fallback to first spreadsheet component.
+            try:
+                components = self._desktop.getComponents()
+                enum = components.createEnumeration()
+                while enum.hasMoreElements():
+                    comp = enum.nextElement()
+                    if comp and comp.supportsService("com.sun.star.sheet.SpreadsheetDocument"):
+                        doc = comp
+                        break
+            except Exception:
+                doc = None
+
         if doc is None:
             raise RuntimeError("Aktif bir LibreOffice belgesi bulunamadı.")
         return doc

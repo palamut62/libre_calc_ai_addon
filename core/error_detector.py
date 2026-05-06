@@ -103,6 +103,23 @@ ERROR_PATTERNS = [
 class ErrorDetector:
     """Çalışma sayfasındaki formül hatalarını tespit eden ve açıklayan sınıf."""
 
+    @staticmethod
+    def _cell_type_name(cell_type) -> str:
+        enum_value = getattr(cell_type, "value", None)
+        if enum_value is not None:
+            name = str(enum_value).upper()
+            if name in ("EMPTY", "VALUE", "TEXT", "FORMULA"):
+                return name.lower()
+        if cell_type == EMPTY:
+            return "empty"
+        if cell_type == VALUE:
+            return "value"
+        if cell_type == TEXT:
+            return "text"
+        if cell_type == FORMULA:
+            return "formula"
+        return "unknown"
+
     def __init__(self, bridge, inspector):
         """
         ErrorDetector başlatıcı.
@@ -191,7 +208,7 @@ class ErrorDetector:
                     cell = sheet.getCellByPosition(col, row)
 
                     # Sadece formül hücrelerini kontrol et
-                    if cell.getType() != FORMULA:
+                    if self._cell_type_name(cell.getType()) != "formula":
                         continue
 
                     error_info = self.get_error_type(cell)

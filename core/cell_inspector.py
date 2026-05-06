@@ -1,6 +1,7 @@
 """Hücre denetleyici - LibreOffice Calc hücrelerinin detaylı bilgilerini okur."""
 
 import logging
+import re
 
 from .address_utils import parse_address
 
@@ -29,6 +30,12 @@ class CellInspector:
     @staticmethod
     def _cell_type_name(cell_type) -> str:
         """UNO Enum uyumlu hücre tipi ismi döndürür."""
+        enum_value = getattr(cell_type, "value", None)
+        if enum_value is not None:
+            name = str(enum_value).upper()
+            if name in ("EMPTY", "VALUE", "TEXT", "FORMULA"):
+                return name.lower()
+
         if cell_type == EMPTY:
             return "empty"
         if cell_type == VALUE:
@@ -76,26 +83,26 @@ class CellInspector:
         """
         try:
             cell = self._get_cell(address)
-            cell_type = cell.getType()
+            cell_type_name = self._cell_type_name(cell.getType())
 
-            if cell_type == EMPTY:
+            if cell_type_name == "empty":
                 value = None
-            elif cell_type == VALUE:
+            elif cell_type_name == "value":
                 value = cell.getValue()
-            elif cell_type == TEXT:
+            elif cell_type_name == "text":
                 value = cell.getString()
-            elif cell_type == FORMULA:
+            elif cell_type_name == "formula":
                 value = cell.getValue() if cell.getValue() != 0 else cell.getString()
             else:
                 value = cell.getString()
 
-            formula = cell.getFormula() if cell_type == FORMULA else None
+            formula = cell.getFormula() if cell_type_name == "formula" else None
 
             return {
                 "address": address.upper(),
                 "value": value,
                 "formula": formula,
-                "type": self._cell_type_name(cell_type),
+                "type": cell_type_name,
             }
 
         except Exception as e:
@@ -121,15 +128,15 @@ class CellInspector:
         """
         try:
             cell = self._get_cell(address)
-            cell_type = cell.getType()
+            cell_type_name = self._cell_type_name(cell.getType())
 
-            if cell_type == EMPTY:
+            if cell_type_name == "empty":
                 value = None
-            elif cell_type == VALUE:
+            elif cell_type_name == "value":
                 value = cell.getValue()
-            elif cell_type == TEXT:
+            elif cell_type_name == "text":
                 value = cell.getString()
-            elif cell_type == FORMULA:
+            elif cell_type_name == "formula":
                 value = cell.getValue() if cell.getValue() != 0 else cell.getString()
             else:
                 value = cell.getString()
@@ -139,7 +146,7 @@ class CellInspector:
                 "value": value,
                 "formula": cell.getFormula(),
                 "formula_local": self._safe_prop(cell, "FormulaLocal"),
-                "type": self._cell_type_name(cell_type),
+                "type": cell_type_name,
                 "background_color": self._safe_prop(cell, "CellBackColor"),
                 "number_format": self._safe_prop(cell, "NumberFormat"),
                 "font_color": self._safe_prop(cell, "CharColor"),
@@ -223,7 +230,7 @@ class CellInspector:
             for row in range(end_row + 1):
                 for col in range(end_col + 1):
                     cell = sheet.getCellByPosition(col, row)
-                    if cell.getType() == FORMULA:
+                    if self._cell_type_name(cell.getType()) == "formula":
                         formula = cell.getFormula().upper()
                         # Hedef hücreye referans var mi kontrol et
                         # Dolar isareti olabilir: $A$1, A$1, $A1, A1
@@ -269,28 +276,28 @@ class CellInspector:
                 row_data = []
                 for col in range(addr.StartColumn, addr.EndColumn + 1):
                     cell = sheet.getCellByPosition(col, row)
-                    cell_type = cell.getType()
+                    cell_type_name = self._cell_type_name(cell.getType())
 
-                    if cell_type == EMPTY:
+                    if cell_type_name == "empty":
                         value = None
-                    elif cell_type == VALUE:
+                    elif cell_type_name == "value":
                         value = cell.getValue()
-                    elif cell_type == TEXT:
+                    elif cell_type_name == "text":
                         value = cell.getString()
-                    elif cell_type == FORMULA:
+                    elif cell_type_name == "formula":
                         value = cell.getValue() if cell.getValue() != 0 else cell.getString()
                     else:
                         value = cell.getString()
 
                     col_letter = self.bridge._index_to_column(col)
                     address = f"{col_letter}{row + 1}"
-                    formula = cell.getFormula() if cell_type == FORMULA else None
+                    formula = cell.getFormula() if cell_type_name == "formula" else None
 
                     row_data.append({
                         "address": address,
                         "value": value,
                         "formula": formula,
-                        "type": self._cell_type_name(cell_type),
+                        "type": cell_type_name,
                     })
                 result.append(row_data)
 
@@ -329,7 +336,7 @@ class CellInspector:
             for row in range(addr.StartRow, addr.EndRow + 1):
                 for col in range(addr.StartColumn, addr.EndColumn + 1):
                     cell = sheet.getCellByPosition(col, row)
-                    if cell.getType() == FORMULA:
+                    if self._cell_type_name(cell.getType()) == "formula":
                         col_letter = self.bridge._index_to_column(col)
                         address = f"{col_letter}{row + 1}"
                         formula = cell.getFormula()
