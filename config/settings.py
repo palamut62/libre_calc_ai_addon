@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
+SUPPORTED_PROVIDERS = ("openrouter", "ollama", "gemini", "groq", "nvidia")
+
 
 class Settings:
     """Uygulama ayarlarını yöneten singleton sınıf."""
@@ -37,30 +39,35 @@ class Settings:
             # OpenRouter
             "openrouter_api_key": "",
             "openrouter_base_url": "https://openrouter.ai/api/v1",
-            "openrouter_default_model": "anthropic/claude-3.5-sonnet",
+            "openrouter_default_model": "google/gemini-2.5-flash",
             # Groq
             "groq_api_key": "",
             "groq_base_url": "https://api.groq.com/openai/v1",
-            "groq_default_model": "llama-3.1-8b-instant",
+            "groq_default_model": "llama-3.3-70b-versatile",
             # Gemini
             "gemini_api_key": "",
             "gemini_base_url": "https://generativelanguage.googleapis.com/v1beta",
-            "gemini_default_model": "gemini-1.5-flash",
+            "gemini_default_model": "gemini-2.5-flash",
+            # NVIDIA NIM
+            "nvidia_api_key": "",
+            "nvidia_base_url": "https://integrate.api.nvidia.com/v1",
+            "nvidia_default_model": "nvidia/llama-3.3-nemotron-super-49b-v1",
             # Ollama
             "ollama_base_url": "http://localhost:11434",
-            "ollama_default_model": "llama3.1",
+            "ollama_default_model": "qwen3:32b",
             # LLM Parametreleri
-            "llm_temperature": 0.7,
-            "llm_max_tokens": 4096,
-            "llm_provider": "openrouter",  # "openrouter", "ollama", "gemini", "groq"
+            "llm_temperature": 0.1,
+            "llm_max_tokens": 8192,
+            "llm_provider": "openrouter",  # bkz. SUPPORTED_PROVIDERS
             # LibreOffice
             "libreoffice_host": "localhost",
             "libreoffice_port": 2002,
             # UI
             "ui_theme": "light",
-            "ui_language": "tr",
+            "ui_language": "en",
             "openrouter_models": [],
             "groq_models": [],
+            "nvidia_models": [],
             "ollama_models": [],
             "gemini_models": [],
             "openrouter_model_prices": {},
@@ -75,15 +82,18 @@ class Settings:
         self._load_from_file()
 
     def _load_from_env(self):
-        """Ortam değişkenlerinden ayarları yükle."""
+        """Ortam değişkenlerinden ayarları yükle.
+
+        API anahtarları .env'den alınmaz — kullanıcı arayüzden girer ki
+        eklenti yüklendiğinde "kayıtlı" görünmesin.
+        """
         env_mapping = {
-            "OPENROUTER_API_KEY": "openrouter_api_key",
             "OPENROUTER_BASE_URL": "openrouter_base_url",
             "OPENROUTER_DEFAULT_MODEL": "openrouter_default_model",
-            "GROQ_API_KEY": "groq_api_key",
             "GROQ_BASE_URL": "groq_base_url",
             "GROQ_DEFAULT_MODEL": "groq_default_model",
-            "GEMINI_API_KEY": "gemini_api_key",
+            "NVIDIA_BASE_URL": "nvidia_base_url",
+            "NVIDIA_DEFAULT_MODEL": "nvidia_default_model",
             "GEMINI_BASE_URL": "gemini_base_url",
             "GEMINI_DEFAULT_MODEL": "gemini_default_model",
             "OLLAMA_BASE_URL": "ollama_base_url",
@@ -107,15 +117,50 @@ class Settings:
                     value = float(value)
                 self._settings[setting_key] = value
 
+    # Ayar dosyası şeması sürümü. Yeni kurulumlardaki kullanıcı için
+    # API anahtarları gelen kaynak ne olursa olsun temizlenmek istendiğinde
+    # bu sayıyı artırın.
+    _SCHEMA_VERSION = 2
+
+    _API_KEY_FIELDS = (
+        "openrouter_api_key",
+        "groq_api_key",
+        "gemini_api_key",
+        "nvidia_api_key",
+    )
+
     def _load_from_file(self):
-        """Kaydedilmiş ayarları dosyadan yükle (env üzerine yazar)."""
-        if self._config_file.exists():
+        """Kaydedilmiş ayarları dosyadan yükle (env üzerine yazar).
+
+        Eğer settings.json'un schema_version'ı bu sürümden eskiyse, API
+        anahtarlarını yüklemeyi atla — kullanıcının "temiz kurulum" beklentisini
+        karşıla. Sadece ui_theme/ui_language gibi kişisel tercihleri koru.
+        """
+        if not self._config_file.exists():
+            return
+        try:
+            with open(self._config_file, "r", encoding="utf-8-sig") as f:
+                saved = json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            logger.warning("Ayarlar dosyası okunamadı: %s", e)
+            return
+
+        saved_schema = saved.get("schema_version", 0)
+        if saved_schema < self._SCHEMA_VERSION:
+            # Eski şema: API anahtarlarını ve sağlayıcı seçimini düşür,
+            # geri kalan tercihleri koru. Yeni şemayla yeniden kaydet.
+            for k in self._API_KEY_FIELDS:
+                saved.pop(k, None)
+            saved["schema_version"] = self._SCHEMA_VERSION
+            self._settings.update(saved)
             try:
-                with open(self._config_file, "r") as f:
-                    saved = json.load(f)
-                self._settings.update(saved)
-            except (json.JSONDecodeError, IOError) as e:
-                logger.warning("Ayarlar dosyası okunamadı: %s", e)
+                self.save()
+            except Exception:
+                pass
+            logger.info("settings.json sürümü %d'e yükseltildi; API anahtarları temizlendi.",
+                        self._SCHEMA_VERSION)
+        else:
+            self._settings.update(saved)
 
     def save(self):
         """Mevcut ayarları dosyaya kaydet."""
@@ -123,12 +168,12 @@ class Settings:
         # Sadece varsayılandan farklı olanları kaydet.
         # Tema/dil gibi kullanıcı tercihlerinde .env değerleri her açılışta
         # tekrar baskın gelmesin diye bu alanları her zaman açıkça yaz.
-        diff = {}
+        diff = {"schema_version": self._SCHEMA_VERSION}
         always_persist = {"ui_theme", "ui_language"}
         for key, value in self._settings.items():
             if key in always_persist or value != self._defaults.get(key):
                 diff[key] = value
-        with open(self._config_file, "w") as f:
+        with open(self._config_file, "w", encoding="utf-8") as f:
             json.dump(diff, f, indent=2, ensure_ascii=False)
 
     def get(self, key: str, default=None):
@@ -202,8 +247,8 @@ class Settings:
 
     @provider.setter
     def provider(self, value: str):
-        if value not in ("openrouter", "ollama", "gemini", "groq"):
-            raise ValueError("Provider 'openrouter', 'ollama', 'gemini' veya 'groq' olmalıdır")
+        if value not in SUPPORTED_PROVIDERS:
+            raise ValueError(f"Provider {SUPPORTED_PROVIDERS} içinden biri olmalıdır")
         self._settings["llm_provider"] = value
 
     @property
@@ -265,6 +310,26 @@ class Settings:
     @groq_models.setter
     def groq_models(self, value: list):
         self._settings["groq_models"] = value
+
+    @property
+    def nvidia_api_key(self) -> str:
+        return self._settings["nvidia_api_key"]
+
+    @property
+    def nvidia_base_url(self) -> str:
+        return self._settings["nvidia_base_url"]
+
+    @property
+    def nvidia_model(self) -> str:
+        return self._settings["nvidia_default_model"]
+
+    @property
+    def nvidia_models(self) -> list:
+        return self._settings.get("nvidia_models", [])
+
+    @nvidia_models.setter
+    def nvidia_models(self, value: list):
+        self._settings["nvidia_models"] = value
 
     @property
     def openrouter_model_prices(self) -> dict:

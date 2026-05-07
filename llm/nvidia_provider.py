@@ -1,4 +1,4 @@
-"""Groq API sağlayıcısı - OpenAI uyumlu API üzerinden LLM erişimi."""
+"""NVIDIA NIM API sağlayıcısı - OpenAI uyumlu API üzerinden LLM erişimi."""
 
 import json
 import logging
@@ -12,14 +12,14 @@ from .base_provider import BaseLLMProvider
 logger = logging.getLogger(__name__)
 
 
-class GroqProvider(BaseLLMProvider):
-    """Groq API üzerinden LLM erişimi sağlayan sınıf."""
+class NvidiaProvider(BaseLLMProvider):
+    """NVIDIA NIM API üzerinden LLM erişimi sağlayan sınıf."""
 
     def __init__(self):
         settings = Settings()
-        self._api_key = settings.groq_api_key
-        self._base_url = settings.groq_base_url.rstrip("/")
-        self._model = settings.groq_model
+        self._api_key = settings.nvidia_api_key
+        self._base_url = settings.nvidia_base_url.rstrip("/")
+        self._model = settings.nvidia_model
         self._temperature = settings.temperature
         self._max_tokens = settings.max_tokens
         self._client = httpx.Client(timeout=60.0)
@@ -42,8 +42,25 @@ class GroqProvider(BaseLLMProvider):
         }
         if tools:
             payload["tools"] = tools
-            payload["tool_choice"] = "auto"
+            # İlk turda tool kullanmayı zorla, sonraki turlarda auto'ya dön
+            force_tool = not self._has_tool_response_after_last_user(messages)
+            payload["tool_choice"] = "required" if force_tool else "auto"
         return payload
+
+    @staticmethod
+    def _has_tool_response_after_last_user(messages: list[dict]) -> bool:
+        """Son kullanıcı mesajından sonra tool sonucu var mı?"""
+        last_user_index = -1
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") == "user":
+                last_user_index = i
+                break
+        if last_user_index == -1:
+            return False
+        for msg in messages[last_user_index + 1:]:
+            if msg.get("role") == "tool":
+                return True
+        return False
 
     def _handle_error_response(self, response: httpx.Response) -> None:
         status = response.status_code
@@ -54,12 +71,12 @@ class GroqProvider(BaseLLMProvider):
             detail = response.text
 
         if status == 401:
-            raise PermissionError(f"Groq kimlik doğrulama hatası: {detail}")
+            raise PermissionError(f"NVIDIA kimlik doğrulama hatası: {detail}")
         if status == 429:
-            raise RuntimeError(f"Groq istek limiti aşıldı: {detail}")
+            raise RuntimeError(f"NVIDIA istek limiti aşıldı: {detail}")
         if status >= 500:
-            raise ConnectionError(f"Groq sunucu hatası ({status}): {detail}")
-        raise RuntimeError(f"Groq API hatası ({status}): {detail}")
+            raise ConnectionError(f"NVIDIA sunucu hatası ({status}): {detail}")
+        raise RuntimeError(f"NVIDIA API hatası ({status}): {detail}")
 
     def _parse_response(self, data: dict) -> dict:
         choice = data.get("choices", [{}])[0]
@@ -73,7 +90,7 @@ class GroqProvider(BaseLLMProvider):
 
     def chat_completion(self, messages: list[dict], tools: list[dict] | None = None) -> dict:
         if not self._api_key:
-            raise PermissionError("Groq API anahtarı ayarlanmamış")
+            raise PermissionError("NVIDIA API anahtarı ayarlanmamış")
 
         payload = self._build_payload(messages, tools, stream=False)
 
@@ -84,9 +101,9 @@ class GroqProvider(BaseLLMProvider):
                 json=payload,
             )
         except httpx.ConnectError as exc:
-            raise ConnectionError(f"Groq'a bağlanılamadı: {exc}") from exc
+            raise ConnectionError(f"NVIDIA'ya bağlanılamadı: {exc}") from exc
         except httpx.TimeoutException as exc:
-            raise ConnectionError(f"Groq isteği zaman aşımına uğradı: {exc}") from exc
+            raise ConnectionError(f"NVIDIA isteği zaman aşımına uğradı: {exc}") from exc
 
         if response.status_code != 200:
             self._handle_error_response(response)
@@ -97,7 +114,7 @@ class GroqProvider(BaseLLMProvider):
         self, messages: list[dict], tools: list[dict] | None = None
     ) -> Generator[dict, None, None]:
         if not self._api_key:
-            raise PermissionError("Groq API anahtarı ayarlanmamış")
+            raise PermissionError("NVIDIA API anahtarı ayarlanmamış")
 
         payload = self._build_payload(messages, tools, stream=True)
 
@@ -124,7 +141,7 @@ class GroqProvider(BaseLLMProvider):
                     try:
                         data = json.loads(data_str)
                     except json.JSONDecodeError:
-                        logger.warning("Groq SSE JSON ayrıştırma hatası: %s", data_str)
+                        logger.warning("NVIDIA SSE JSON ayrıştırma hatası: %s", data_str)
                         continue
 
                     choice = data.get("choices", [{}])[0]
@@ -136,13 +153,13 @@ class GroqProvider(BaseLLMProvider):
                     }
 
         except httpx.ConnectError as exc:
-            raise ConnectionError(f"Groq'a bağlanılamadı: {exc}") from exc
+            raise ConnectionError(f"NVIDIA'ya bağlanılamadı: {exc}") from exc
         except httpx.TimeoutException as exc:
-            raise ConnectionError(f"Groq isteği zaman aşımına uğradı: {exc}") from exc
+            raise ConnectionError(f"NVIDIA isteği zaman aşımına uğradı: {exc}") from exc
 
     def get_available_models(self) -> list[str]:
         if not self._api_key:
-            raise PermissionError("Groq API anahtarı ayarlanmamış")
+            raise PermissionError("NVIDIA API anahtarı ayarlanmamış")
 
         try:
             response = self._client.get(
@@ -150,9 +167,9 @@ class GroqProvider(BaseLLMProvider):
                 headers=self._headers(),
             )
         except httpx.ConnectError as exc:
-            raise ConnectionError(f"Groq'a bağlanılamadı: {exc}") from exc
+            raise ConnectionError(f"NVIDIA'ya bağlanılamadı: {exc}") from exc
         except httpx.TimeoutException as exc:
-            raise ConnectionError(f"Groq isteği zaman aşımına uğradı: {exc}") from exc
+            raise ConnectionError(f"NVIDIA isteği zaman aşımına uğradı: {exc}") from exc
 
         if response.status_code != 200:
             self._handle_error_response(response)
@@ -163,7 +180,7 @@ class GroqProvider(BaseLLMProvider):
 
     def set_model(self, model_name: str) -> None:
         self._model = model_name
-        logger.info("Groq modeli değiştirildi: %s", model_name)
+        logger.info("NVIDIA modeli değiştirildi: %s", model_name)
 
     def close(self) -> None:
         if self._client:

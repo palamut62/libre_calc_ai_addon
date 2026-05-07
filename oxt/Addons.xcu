@@ -21,11 +21,10 @@
                     <!-- Open Assistant -->
                     <node oor:name="m1" oor:op="replace">
                         <prop oor:name="URL" oor:type="xs:string">
-                            <value>vnd.sun.star.script:libre_calc_ai-1.0.0.oxt/Scripts/python/interface.py$show_assistant?language=Python&amp;location=user:uno_packages</value>
+                            <value>vnd.sun.star.script:libre_calc_ai-0.1.0.oxt/Scripts/python/interface.py$show_assistant?language=Python&amp;location=user:uno_packages</value>
                         </prop>
                         <prop oor:name="Title" oor:type="xs:string">
-                            <value xml:lang="en">Open Assistant</value>
-                            <value xml:lang="tr">Asistani Ac</value>
+                            <value>Open Assistant</value>
                         </prop>
                         <prop oor:name="Target" oor:type="xs:string">
                             <value>_self</value>
@@ -40,11 +39,10 @@
                     <!-- Settings -->
                     <node oor:name="m3" oor:op="replace">
                         <prop oor:name="URL" oor:type="xs:string">
-                            <value>vnd.sun.star.script:libre_calc_ai-1.0.0.oxt/Scripts/python/interface.py$show_settings?language=Python&amp;location=user:uno_packages</value>
+                            <value>vnd.sun.star.script:libre_calc_ai-0.1.0.oxt/Scripts/python/interface.py$show_settings?language=Python&amp;location=user:uno_packages</value>
                         </prop>
                         <prop oor:name="Title" oor:type="xs:string">
-                            <value xml:lang="en">Settings</value>
-                            <value xml:lang="tr">Ayarlar</value>
+                            <value>Settings</value>
                         </prop>
                         <prop oor:name="Target" oor:type="xs:string">
                             <value>_self</value>
@@ -53,11 +51,10 @@
                     <!-- About -->
                     <node oor:name="m4" oor:op="replace">
                         <prop oor:name="URL" oor:type="xs:string">
-                            <value>vnd.sun.star.script:libre_calc_ai-1.0.0.oxt/Scripts/python/interface.py$show_about?language=Python&amp;location=user:uno_packages</value>
+                            <value>vnd.sun.star.script:libre_calc_ai-0.1.0.oxt/Scripts/python/interface.py$show_about?language=Python&amp;location=user:uno_packages</value>
                         </prop>
                         <prop oor:name="Title" oor:type="xs:string">
-                            <value xml:lang="en">About</value>
-                            <value xml:lang="tr">Hakkinda</value>
+                            <value>About</value>
                         </prop>
                         <prop oor:name="Target" oor:type="xs:string">
                             <value>_self</value>
@@ -78,11 +75,10 @@
                 <node oor:name="ToolBarItems">
                     <node oor:name="t1" oor:op="replace">
                         <prop oor:name="URL" oor:type="xs:string">
-                            <value>vnd.sun.star.script:libre_calc_ai-1.0.0.oxt/Scripts/python/interface.py$show_assistant?language=Python&amp;location=user:uno_packages</value>
+                            <value>vnd.sun.star.script:libre_calc_ai-0.1.0.oxt/Scripts/python/interface.py$show_assistant?language=Python&amp;location=user:uno_packages</value>
                         </prop>
                         <prop oor:name="Title" oor:type="xs:string">
-                            <value xml:lang="en">AI Assistant</value>
-                            <value xml:lang="tr">AI Asistan</value>
+                            <value>AI Assistant</value>
                         </prop>
                         <prop oor:name="Target" oor:type="xs:string">
                             <value>_self</value>
@@ -104,7 +100,7 @@
         <node oor:name="Images">
             <node oor:name="com.aras.librecalc.ai.images" oor:op="replace">
                 <prop oor:name="URL" oor:type="xs:string">
-                    <value>vnd.sun.star.script:libre_calc_ai-1.0.0.oxt/Scripts/python/interface.py$show_assistant?language=Python&amp;location=user:uno_packages</value>
+                    <value>vnd.sun.star.script:libre_calc_ai-0.1.0.oxt/Scripts/python/interface.py$show_assistant?language=Python&amp;location=user:uno_packages</value>
                 </prop>
                 <node oor:name="UserDefinedImages">
                     <prop oor:name="ImageSmallURL" oor:type="xs:string">

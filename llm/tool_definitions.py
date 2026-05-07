@@ -611,7 +611,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "create_chart",
-            "description": "Verilerden grafik oluşturur. Çubuk, çizgi, pasta veya dağılım grafiği desteklenir.",
+            "description": "Verilerden grafik oluşturur. Çubuk, çizgi, pasta veya dağılım grafiği desteklenir. data_range en az 2 sütun (etiketler + değerler) içermelidir; tek sütunlu aralıkta has_header=false verilmeli.",
             "parameters": {
                 "type": "object",
                 "properties": {

@@ -72,6 +72,9 @@ class CellManipulator:
         try:
             cell = self._get_cell(address)
 
+            if not isinstance(formula, str):
+                formula = str(formula)
+
             if formula.startswith("="):
                 # Formül olarak yaz
                 cell.setFormula(formula)
@@ -660,70 +663,50 @@ class CellManipulator:
         value2: str = None,
         color: str = None,
     ):
-        """
-        Hücre aralığına koşullu biçimlendirme uygular.
-
-        Args:
-            range_str: Biçimlendirilecek aralık (ör: A1:A20).
-            format_type: Biçim tipi (color_scale, data_bar, value_condition).
-            condition: Koşul tipi (greater_than, less_than, equal, between, contains).
-            value1: Birinci değer.
-            value2: İkinci değer (between için).
-            color: Uygulanacak arka plan rengi.
-
-        Returns:
-            Sonuç açıklaması.
-        """
         try:
             sheet = self.bridge.get_active_sheet()
             cell_range = self.bridge.get_cell_range(sheet, range_str)
-
-            cond_formats = sheet.getPropertyValue("ConditionalFormats")
-            range_address = cell_range.getRangeAddress()
-
-            from com.sun.star.sheet import ConditionOperator
-
+            
             if format_type == "value_condition" and condition and value1:
-                # Değer bazlı koşullu biçimlendirme
+                import uno
+                from com.sun.star.beans import PropertyValue
+
                 operator_map = {
-                    "greater_than": ConditionOperator.GREATER,
-                    "less_than": ConditionOperator.LESS,
-                    "equal": ConditionOperator.EQUAL,
-                    "between": ConditionOperator.BETWEEN,
+                    "greater_than": uno.Enum("com.sun.star.sheet.ConditionOperator", "GREATER"),
+                    "less_than": uno.Enum("com.sun.star.sheet.ConditionOperator", "LESS"),
+                    "equal": uno.Enum("com.sun.star.sheet.ConditionOperator", "EQUAL"),
+                    "between": uno.Enum("com.sun.star.sheet.ConditionOperator", "BETWEEN"),
                 }
-
-                cond_entry = cond_formats.createByRange(range_address)
-                operator = operator_map.get(condition, ConditionOperator.GREATER)
-
-                formula1 = str(value1)
-                formula2 = str(value2) if value2 else ""
-
-                # Koşul ekle
+                operator = operator_map.get(condition, uno.Enum("com.sun.star.sheet.ConditionOperator", "GREATER"))
+                
+                # Dinamik stil oluştur
+                doc = self.bridge.get_active_document()
+                style_families = doc.StyleFamilies
+                cell_styles = style_families.getByName("CellStyles")
+                
+                style_name = f"CondStyle_{color}" if color else "Result2"
+                if color and not cell_styles.hasByName(style_name):
+                    style = doc.createInstance("com.sun.star.style.CellStyle")
+                    cell_styles.insertByName(style_name, style)
+                    style.CellBackColor = self._parse_color_str(color)
+                    
+                cond_format = cell_range.ConditionalFormat
+                
                 props = []
-                if color:
-                    bg_color = self._parse_color_str(color)
-                    cond_entry.addEntry(operator, formula1, formula2)
-
-                    # Stil uygula
-                    entries = cond_entry.getCount()
-                    if entries > 0:
-                        entry = cond_entry.getByIndex(entries - 1)
-                        entry.setPropertyValue("CellBackColor", bg_color)
-
-                cond_formats.addCondition(cond_entry)
+                p1 = PropertyValue(); p1.Name = "Operator"; p1.Value = operator
+                p2 = PropertyValue(); p2.Name = "Formula1"; p2.Value = str(value1)
+                p3 = PropertyValue(); p3.Name = "StyleName"; p3.Value = style_name
+                props.extend([p1, p2, p3])
+                
+                if value2:
+                    p4 = PropertyValue(); p4.Name = "Formula2"; p4.Value = str(value2)
+                    props.append(p4)
+                    
+                cond_format.addNew(tuple(props))
+                cell_range.ConditionalFormat = cond_format
 
                 logger.info("Koşullu biçimlendirme uygulandı: %s", range_str.upper())
                 return f"{range_str} aralığına koşullu biçimlendirme uygulandı."
-
-            elif format_type == "color_scale":
-                # Renk skalası - basit implementasyon
-                logger.info("Renk skalası uygulandı: %s", range_str.upper())
-                return f"{range_str} aralığına renk skalası uygulandı."
-
-            elif format_type == "data_bar":
-                # Veri çubuğu - basit implementasyon
-                logger.info("Veri çubuğu uygulandı: %s", range_str.upper())
-                return f"{range_str} aralığına veri çubuğu uygulandı."
 
             return f"{range_str} aralığına biçimlendirme uygulandı."
 
@@ -768,7 +751,7 @@ class CellManipulator:
             sheet = self.bridge.get_active_sheet()
             cell_range = self.bridge.get_cell_range(sheet, range_str)
 
-            from com.sun.star.sheet.ValidationType import LIST, WHOLE, DECIMAL, DATE, TEXT_LENGTH
+            from com.sun.star.sheet.ValidationType import LIST, WHOLE, DECIMAL, DATE, TEXT_LEN
             from com.sun.star.sheet.ValidationAlertStyle import STOP
 
             validation = cell_range.getPropertyValue("Validation")
@@ -778,7 +761,7 @@ class CellManipulator:
                 "whole_number": WHOLE,
                 "decimal": DECIMAL,
                 "date": DATE,
-                "text_length": TEXT_LENGTH,
+                "text_length": TEXT_LEN,
             }
 
             val_type = type_map.get(validation_type, LIST)

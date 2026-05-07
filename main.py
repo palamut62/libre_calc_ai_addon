@@ -1,32 +1,77 @@
-#!/usr/bin/env python3
-"""LibreCalc AI Asistanı - Ana giriş noktası.
+﻿#!/usr/bin/env python3
+"""LibreCalc AI Assistant - main entry point.
 
-LibreOffice Calc ile doğal dil komutlarıyla etkileşim kuran
-PyQt5 tabanlı AI asistanını başlatır.
-
-Kullanım:
-    python main.py [--no-lo] [--theme dark|light] [--provider openrouter|ollama|gemini|groq]
-
-LibreOffice'i dinleme modunda başlatmak için:
-    libreoffice --calc --accept="socket,host=localhost,port=2002;urp;"
+Starts the PyQt5-based AI assistant for LibreOffice Calc.
 """
 
-import sys
 import argparse
 import logging
+import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QIcon
-
+from config.settings import SUPPORTED_PROVIDERS
 from config.settings import Settings
-from ui.main_window import MainWindow
+
+
+def create_startup_splash():
+    """Create a short startup loading animation window."""
+    from PyQt5.QtCore import Qt, QTimer
+    from PyQt5.QtWidgets import QLabel, QProgressBar, QVBoxLayout, QWidget
+
+    splash = QWidget()
+    splash.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+    splash.setAttribute(Qt.WA_TranslucentBackground, True)
+
+    container = QWidget(splash)
+    container.setObjectName("startup_container")
+    container.setStyleSheet(
+        "#startup_container {"
+        "background: #0f172a; color: #e2e8f0; border: 1px solid #1e293b; "
+        "border-radius: 14px;}"
+        "QLabel { color: #e2e8f0; font-size: 13px; }"
+        "QProgressBar { border: 1px solid #334155; border-radius: 6px; "
+        "background: #0b1220; text-align: center; color: #cbd5e1; }"
+        "QProgressBar::chunk { background: #22d3ee; border-radius: 5px; }"
+    )
+
+    root = QVBoxLayout(splash)
+    root.setContentsMargins(0, 0, 0, 0)
+    root.addWidget(container)
+
+    layout = QVBoxLayout(container)
+    layout.setContentsMargins(18, 16, 18, 16)
+    layout.setSpacing(10)
+
+    title = QLabel("ArasAI")
+    title.setStyleSheet("font-size:16px; font-weight:700;")
+    layout.addWidget(title)
+
+    subtitle = QLabel("Asistan hazirlaniyor")
+    layout.addWidget(subtitle)
+
+    bar = QProgressBar()
+    bar.setRange(0, 0)
+    bar.setTextVisible(False)
+    bar.setFixedHeight(12)
+    layout.addWidget(bar)
+
+    dots = {"value": 0}
+
+    def tick():
+        dots["value"] = (dots["value"] + 1) % 4
+        subtitle.setText("Asistan hazirlaniyor" + "." * dots["value"])
+
+    timer = QTimer(splash)
+    timer.timeout.connect(tick)
+    timer.start(250)
+
+    splash.resize(280, 120)
+    return splash, timer
 
 
 def setup_logging(verbose: bool = False):
-    """Loglama yapılandırmasını kurar."""
+    """Setup logging."""
     level = logging.DEBUG if verbose else logging.INFO
     fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     datefmt = "%H:%M:%S"
@@ -40,7 +85,6 @@ def setup_logging(verbose: bool = False):
     console.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
     root.addHandler(console)
 
-    # Kalıcı dosya logu: ~/.config/libre_calc_ai/logs/app.log
     log_dir = Path.home() / ".config" / "libre_calc_ai" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     file_handler = RotatingFileHandler(
@@ -55,104 +99,116 @@ def setup_logging(verbose: bool = False):
 
 
 def parse_args():
-    """Komut satırı argümanlarını ayrıştırır."""
+    """Parse CLI arguments."""
     parser = argparse.ArgumentParser(
-        description="LibreCalc AI Asistanı - LibreOffice Calc için AI destekli yardımcı"
+        description="LibreCalc AI Assistant for LibreOffice Calc"
     )
     parser.add_argument(
         "--no-lo",
         action="store_true",
-        help="LibreOffice bağlantısı olmadan başlat (test modu)",
+        help="Start without LibreOffice connection (test mode)",
     )
     parser.add_argument(
         "--theme",
         choices=["dark", "light"],
         default=None,
-        help="Arayüz teması (varsayılan: ayarlardan okunur)",
+        help="UI theme (default: read from settings)",
     )
     parser.add_argument(
         "--provider",
-        choices=["openrouter", "ollama", "gemini", "groq"],
+        choices=list(SUPPORTED_PROVIDERS),
         default=None,
-        help="LLM sağlayıcısı (varsayılan: ayarlardan okunur)",
+        help="LLM provider (default: read from settings)",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
-        help="Ayrıntılı loglama",
+        help="Verbose logging",
+    )
+    parser.add_argument(
+        "--settings",
+        action="store_true",
+        help="Open settings dialog directly",
     )
     return parser.parse_args()
 
 
 def setup_window_layout(window, addon_percent: int = 30):
-    """Pencereyi ekranın sağ tarafına konumlandırır ve LibreOffice'i sola yerleştirir.
-
-    Args:
-        window: QMainWindow nesnesi.
-        addon_percent: Eklenti için ekran genişliğinin yüzdesi (varsayılan %30).
-    """
+    """Place assistant window right and LibreOffice left when possible."""
     import subprocess
-    from PyQt5.QtWidgets import QDesktopWidget
+
     from PyQt5.QtCore import QTimer
+    from PyQt5.QtWidgets import QDesktopWidget
 
     desktop = QDesktopWidget()
     screen = desktop.availableGeometry(desktop.primaryScreen())
 
+    screen_x = screen.x()
+    screen_y = screen.y()
     screen_width = screen.width()
     screen_height = screen.height()
 
-    # Eklenti genişliği (%30)
     addon_width = int(screen_width * addon_percent / 100)
-
-    # LibreOffice genişliği (%70)
+    addon_width = max(window.minimumWidth(), min(addon_width, 620))
     lo_width = screen_width - addon_width
 
-    # Eklenti penceresini sağa konumlandır
-    window.setGeometry(lo_width, 0, addon_width, screen_height)
+    right_margin = 14
+    top_margin = 6
+    bottom_margin = 8
+    x = screen_x + screen_width - addon_width - right_margin
+    y = screen_y + top_margin
+    height = max(window.minimumHeight(), screen_height - top_margin - bottom_margin)
+    window.setGeometry(x, y, addon_width, height)
 
-    # LibreOffice penceresini sola konumlandır (wmctrl ile)
     def position_libreoffice():
         try:
-            # wmctrl var mı kontrol et
             result = subprocess.run(["which", "wmctrl"], capture_output=True, text=True)
             if result.returncode != 0:
                 return
 
-            # LibreOffice penceresini bul
             result = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True)
             for line in result.stdout.splitlines():
                 if "calc" in line.lower() or "libreoffice" in line.lower():
                     wid = line.split()[0]
-                    # Maximize'ı kaldır
-                    subprocess.run([
-                        "wmctrl", "-i", "-r", wid,
-                        "-b", "remove,maximized_vert,maximized_horz"
-                    ], capture_output=True)
-                    # Konumlandır: x=0, y=0, genişlik=lo_width, yükseklik=screen_height
-                    subprocess.run([
-                        "wmctrl", "-i", "-r", wid,
-                        "-e", f"0,0,0,{lo_width},{screen_height}"
-                    ], capture_output=True)
+                    subprocess.run(
+                        [
+                            "wmctrl",
+                            "-i",
+                            "-r",
+                            wid,
+                            "-b",
+                            "remove,maximized_vert,maximized_horz",
+                        ],
+                        capture_output=True,
+                    )
+                    subprocess.run(
+                        [
+                            "wmctrl",
+                            "-i",
+                            "-r",
+                            wid,
+                            "-e",
+                            f"0,{screen_x},{screen_y},{max(200, lo_width-right_margin)},{height}",
+                        ],
+                        capture_output=True,
+                    )
                     break
         except Exception:
             pass
 
-    # Biraz bekleyip LibreOffice'i konumlandır
     QTimer.singleShot(500, position_libreoffice)
 
 
 def main():
-    """Uygulamayı başlatır."""
+    """Start the application."""
     args = parse_args()
     setup_logging(args.verbose)
 
     logger = logging.getLogger(__name__)
-    logger.info("LibreCalc AI Asistanı başlatılıyor...")
+    logger.info("LibreCalc AI Assistant starting...")
 
-    # Ayarları yükle
     settings = Settings()
-
-    # Komut satırı argümanlarını ayarlara uygula
     if args.theme:
         settings.theme = args.theme
     if args.provider:
@@ -161,24 +217,54 @@ def main():
     if not settings.logging_enabled:
         logging.disable(logging.CRITICAL)
 
-    # High DPI desteği (QApplication oluşturulmadan önce ayarlanmalı)
+    # Some Windows LO builds can crash if PyQt5 loads before uno.
+    try:
+        import uno  # noqa: F401
+    except Exception:
+        pass
+
+    from PyQt5.QtCore import Qt
+    from PyQt5.QtWidgets import QApplication
+
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
 
-    # Qt uygulamasını oluştur
     app = QApplication(sys.argv)
     app.setApplicationName("ArasAI")
     app.setOrganizationName("ArasAI")
 
-    # Ana pencereyi oluştur
+    splash = None
+    splash_timer = None
+    if not args.settings:
+        splash, splash_timer = create_startup_splash()
+        screen = app.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            x = geo.x() + (geo.width() - splash.width()) // 2
+            y = geo.y() + (geo.height() - splash.height()) // 2
+            splash.move(x, y)
+        splash.show()
+        app.processEvents()
+
+    if args.settings:
+        from ui.settings_dialog import SettingsDialog
+
+        dlg = SettingsDialog()
+        sys.exit(dlg.exec_())
+
+    from ui.main_window import MainWindow
+
     window = MainWindow(skip_lo_connect=args.no_lo)
-
-    # Pencereleri yan yana konumlandır (LibreOffice %70 sol, ArasAI %30 sağ)
-    setup_window_layout(window, addon_percent=20)
-
+    setup_window_layout(window, addon_percent=22)
     window.show()
 
-    logger.info("Uygulama hazır.")
+    if splash is not None:
+        app.processEvents()
+        splash.close()
+    if splash_timer is not None:
+        splash_timer.stop()
+
+    logger.info("Application ready.")
     sys.exit(app.exec_())
 
 

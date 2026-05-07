@@ -145,6 +145,21 @@ class GeminiProvider(BaseLLMProvider):
 
         return contents
 
+    @staticmethod
+    def _has_tool_response_after_last_user(messages: list[dict]) -> bool:
+        """Son kullanıcı mesajından sonra tool sonucu var mı?"""
+        last_user_index = -1
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") == "user":
+                last_user_index = i
+                break
+        if last_user_index == -1:
+            return False
+        for msg in messages[last_user_index + 1:]:
+            if msg.get("role") == "tool":
+                return True
+        return False
+
     def _parse_retry_delay(self, response_text: str) -> float:
         """Hata mesajından retry süresini çıkarır."""
         match = re.search(r"retry in ([\d.]+)s", response_text, re.IGNORECASE)
@@ -195,8 +210,10 @@ class GeminiProvider(BaseLLMProvider):
 
         if gemini_tools:
             payload["tools"] = gemini_tools
-            # Tool kullanımı için config: AUTO (model karar verir)
-            payload["toolConfig"] = {"functionCallingConfig": {"mode": "AUTO"}}
+            # İlk turda tool kullanmayı zorla (ANY), sonraki turlarda AUTO'ya dön
+            force_tool = not self._has_tool_response_after_last_user(messages)
+            mode = "ANY" if force_tool else "AUTO"
+            payload["toolConfig"] = {"functionCallingConfig": {"mode": mode}}
 
         url = f"{self._base_url}/models/{self._model}:generateContent"
         response = self._make_request(url, payload)

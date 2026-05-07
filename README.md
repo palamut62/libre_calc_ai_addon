@@ -1,247 +1,337 @@
 # LibreCalc AI Assistant
 
-An intelligent, modern AI assistant sidebar for LibreOffice Calc, designed with the **Claude Code** aesthetic. This add-on allows you to chat with an AI utilizing data from your spreadsheets, analyze cells, and generate formulas, all within a sleek, professional interface.
+An AI sidebar assistant for **LibreOffice Calc** that lets you ask questions, generate formulas, format tables, build charts, and detect errors — all through natural-language chat. Pluggable across **NVIDIA NIM, OpenRouter, Google Gemini, Groq, and local Ollama** providers, with full tool-calling so the AI directly drives your spreadsheet via the UNO bridge.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![LibreOffice](https://img.shields.io/badge/LibreOffice-Calc-green)
+![Status](https://img.shields.io/badge/status-active-brightgreen)
 
-## ✨ Features
+---
 
-### Core Features
-*   **Modern & Streamlined UI**: A clean interface focusing purely on the chat experience.
-*   **Multi-Language Support**: Full Turkish and English interface support with instant language switching.
-*   **Theme Support**: Light, Dark, and System theme options.
+## Table of Contents
 
-### AI Providers
-*   **OpenRouter (Cloud)**: Access to Claude, GPT, Gemini, Llama and 100+ models via API.
-*   **Groq (Cloud)**: Ultra-fast inference via Groq API (e.g. `llama-3.3-70b-versatile`, `mixtral-8x7b-32768`).
-*   **NVIDIA NIM (Cloud)**: NVIDIA-hosted models via `integrate.api.nvidia.com` (e.g. `meta/llama-3.3-70b-instruct`, `nvidia/llama-3.1-nemotron-70b-instruct`). Get your API key at [build.nvidia.com](https://build.nvidia.com).
-*   **Gemini (Google)**: Google Gemini models via API.
-*   **Ollama (Local)**: Run AI models locally for privacy and offline use.
-    *   Automatic model fetching from Ollama server
-    *   Tool support detection with visual warnings
-    *   Fallback mode for models without tool support
+- [Features](#features)
+- [Supported AI Providers](#supported-ai-providers)
+- [Tool Catalogue](#tool-catalogue-what-the-ai-can-do)
+- [Architecture](#architecture)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Testing](#testing)
+- [Project Layout](#project-layout)
+- [Troubleshooting](#troubleshooting)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License](#license)
 
-### Spreadsheet Integration
-*   **Live Selection Tracking**: The status bar instantly reflects your selection (`A1`, `A1:B5`, or `A1, C5`).
-*   **Deep Integration via UNO**:
-    *   Read/Write cell values & formulas
-    *   Apply styles (Bold, Italic, Color, Font Size)
-    *   Cell merging and unmerging
-    *   Advanced borders and grid styles
-    *   Text alignment and wrapping
-    *   Analyze formulas and detect errors
+---
 
-### Visual Designer Mode
-*   **Borders & Grids**: Create professional-looking tables
-*   **Text Alignment**: Right-align numbers, center headers, wrap text
-*   **Color Palettes**: Harmonious background and font colors
-*   **Cell Merging**: Combine cells for headers and labels
+## Features
 
-## 🚀 Installation
+### Chat & Reasoning
+- Streaming chat with conversation history scoped to the active workbook.
+- Tool-calling loop: the model picks the right action, the dispatcher executes it on Calc, the result is fed back, and the model decides what to do next.
+- Markdown rendering, code blocks, and structured responses.
+- Token / cost tracking on providers that expose it (OpenRouter).
+
+### Spreadsheet Automation (28 tools)
+- **Cells & Values** — read ranges, write text/numbers/formulas, clear ranges.
+- **Formatting** — bold, italic, font size & color, background color, alignment, wrap, borders, merge/unmerge.
+- **Layout** — column width, row height, auto-fit, insert/delete rows & columns.
+- **Tables** — sort, auto-filter, conditional formatting, data validation (drop-downs, ranges).
+- **Sheets** — list, switch, create, rename.
+- **Analysis** — full sheet summary, structure analysis (input/output cells), cell details, precedents & dependents, formula inventory.
+- **Errors** — detect `#DIV/0!`, `#NAME?`, `#REF!`, `#VALUE!`, `#N/A`, etc., with human-readable explanations and fix suggestions.
+- **Charts** — bar, column, line, pie, scatter charts placed at any cell.
+- **Copy** — duplicate any range to a new location.
+
+### UI / UX
+- Clean side-panel UI with light/dark/system theme.
+- English & Turkish localization with instant switching.
+- Live selection tracker — your current cell or range is always visible to the AI.
+- Settings dialog with per-provider API keys, model picker, temperature, and max-tokens controls.
+- Help dialog with quick-start prompts.
+
+### Reliability
+- Robust input coercion: numeric arguments from any provider (JSON `int`, `float`, or string) are normalized before hitting Calc.
+- Clear error surfaces in chat instead of silent failures.
+- Conversation auto-trim to stay inside model context windows.
+
+---
+
+## Supported AI Providers
+
+| Provider | Default model | Hosting | Tool-calling | Notes |
+|---|---|---|---|---|
+| **OpenRouter** | `google/gemini-2.5-flash` | Cloud | ✅ | Best price / quality default. Switch to `gemini-2.5-flash-lite`, `gpt-5.3-mini`, `claude-haiku-4.5`, etc. from settings. |
+| **NVIDIA NIM** | `nvidia/llama-3.3-nemotron-super-49b-v1` | Cloud | ✅ | Free-tier friendly. Get a key at [build.nvidia.com](https://build.nvidia.com). |
+| **Google Gemini** | `gemini-2.5-flash` | Cloud | ✅ | Native Gemini API, vision-capable variants supported. |
+| **Groq** | `llama-3.3-70b-versatile` | Cloud | ✅ | Ultra-low latency. |
+| **Ollama** | `gemma4:31b-cloud` (configurable) | Local / Ollama Cloud | ✅* | Set any pulled model. *Tool-calling requires a tool-capable model (e.g. Llama 3.1+, Qwen 2.5+, Mistral, Gemma 3+). |
+
+API keys are entered through the Settings dialog and stored under `~/.config/libre_calc_ai/settings.json`. The `.env` file is for development overrides only — keys typed in the UI take precedence.
+
+---
+
+## Tool Catalogue (what the AI can do)
+
+The dispatcher exposes 28 OpenAI-compatible function tools. The AI selects them automatically based on your prompt.
+
+| Group | Tools |
+|---|---|
+| Read | `read_cell_range`, `get_cell_details`, `get_cell_precedents`, `get_cell_dependents`, `get_all_formulas`, `get_sheet_summary`, `analyze_spreadsheet_structure`, `list_sheets` |
+| Write | `write_formula`, `clear_range`, `copy_range` |
+| Format | `set_cell_style`, `merge_cells`, `set_conditional_format`, `set_data_validation` |
+| Layout | `set_column_width`, `set_row_height`, `auto_fit_column`, `insert_rows`, `insert_columns`, `delete_rows`, `delete_columns` |
+| Table | `sort_range`, `set_auto_filter` |
+| Sheet | `create_sheet`, `switch_sheet`, `rename_sheet` |
+| Diagnose | `detect_and_explain_errors` |
+| Visual | `create_chart` |
+
+Schemas live in `llm/tool_definitions.py`. The same definitions are sent to every provider — switching providers does not change the AI's capabilities.
+
+---
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│   PyQt5 Sidebar (ui/)                                    │
+│   • chat widget   • settings dialog   • i18n / themes    │
+└─────────────────────┬────────────────────────────────────┘
+                      │ user prompt
+┌─────────────────────▼────────────────────────────────────┐
+│   LLM layer (llm/)                                       │
+│   • base_provider  • openrouter / nvidia / gemini /      │
+│     groq / ollama  • tool_definitions.TOOLS              │
+│     (OpenAI-compatible function-calling schema)          │
+└─────────────────────┬────────────────────────────────────┘
+                      │ tool_calls[]
+┌─────────────────────▼────────────────────────────────────┐
+│   ToolDispatcher                                         │
+│   routes each call to the right Core module              │
+└─────────────────────┬────────────────────────────────────┘
+                      │
+┌─────────────────────▼────────────────────────────────────┐
+│   Core (core/)                                           │
+│   • CellInspector   • CellManipulator                    │
+│   • SheetAnalyzer   • ErrorDetector                      │
+│   • LibreOfficeBridge (UNO socket / PyUNO)               │
+└─────────────────────┬────────────────────────────────────┘
+                      │
+                ┌─────▼──────┐
+                │ LibreOffice│
+                │   Calc     │
+                └────────────┘
+```
+
+The same code path is used by both the **standalone PyQt5 app** (`main.py`) and the **OXT add-on** packaged under `oxt/`.
+
+---
+
+## Installation
 
 ### Prerequisites
+- Python **3.10+**
+- LibreOffice **7.4+** (Calc)
+- For the standalone app: PyQt5 + `httpx` + `python-dotenv` (see `requirements.txt`)
+- For the OXT add-on: just LibreOffice — the bundle is self-contained.
 
-*   Linux (Tested on Ubuntu/Debian based systems)
-*   Python 3.10+
-*   LibreOffice Calc
-*   `python3-uno` package (Crucial for connection)
-
-### Setup
-
-1.  **Install System Dependencies:**
-
-    ```bash
-    sudo apt update
-    sudo apt install libreoffice python3-uno python3-venv
-    ```
-
-    > **Note:** If you are using the Snap version of LibreOffice, it is highly recommended to switch to the `apt` version for better compatibility with external Python scripts.
-
-2.  **Clone the Repository:**
-
-    ```bash
-    git clone https://github.com/palamut62/libre_calc_ai_addon.git
-    cd libre_calc_ai_addon
-    ```
-
-3.  **Create Virtual Environment & Install Requirements:**
-
-    ```bash
-    # Create venv with access to system site-packages (needed for uno)
-    python3 -m venv venv --system-site-packages
-
-    # Activate
-    source venv/bin/activate
-
-    # Install dependencies
-    pip install -r requirements.txt
-    ```
-
-4.  **Configuration:**
-
-    Create a `.env` file in the root directory (optional - can also configure via Settings UI):
-
-    ```env
-    # Options: openrouter, ollama, gemini, groq, nvidia
-    LLM_PROVIDER=openrouter
-
-    # If using OpenRouter
-    OPENROUTER_API_KEY=your_api_key_here
-
-    # If using Ollama (local)
-    OLLAMA_BASE_URL=http://localhost:11434
-    OLLAMA_DEFAULT_MODEL=llama3.2
-    ```
-
-## 💡 Usage
-
-### Option 1: Launch Both (Recommended for New Sessions)
+### Option A — Standalone Python app
 
 ```bash
-./launch.sh                    # Opens LibreOffice + Assistant
-./launch.sh my_spreadsheet.ods # Opens specific file + Assistant
+git clone https://github.com/palamut62/libre_calc_ai_addon.git
+cd libre_calc_ai_addon
+
+python -m venv venv
+# Linux / macOS
+source venv/bin/activate
+# Windows PowerShell
+.\venv\Scripts\Activate.ps1
+
+pip install -r requirements.txt
 ```
 
-### Option 2: Connect to Existing LibreOffice
-
-If you already have LibreOffice open, you need to restart it in **socket mode**:
+Start LibreOffice in socket mode so the assistant can connect:
 
 ```bash
-# Step 1: Close your current LibreOffice
-# Step 2: Reopen it with socket listening enabled
-libreoffice --calc --accept="socket,host=localhost,port=2002;urp;" your_file.ods
+# Linux / macOS
+libreoffice --calc --accept="socket,host=localhost,port=2002;urp;"
 
-# Step 3: Run the assistant only
-./connect.sh
+# Windows
+"C:\Program Files\LibreOffice\program\soffice.exe" --calc --accept="socket,host=127.0.0.1,port=2002;urp;"
 ```
 
-### Option 3: Add Socket Mode to LibreOffice Startup
-
-To always start LibreOffice with socket support, create an alias:
+Run the assistant:
 
 ```bash
-# Add to ~/.bashrc or ~/.zshrc
-alias localc='libreoffice --calc --accept="socket,host=localhost,port=2002;urp;"'
-
-# Then use:
-localc my_file.ods
-./connect.sh
+python main.py
 ```
 
-Or search for "LibreCalc AI Assistant" in your application menu.
+### Option B — Install as a LibreOffice extension (OXT)
 
-### Option 4: OXT Extension (LibreOffice Add-on)
+```bash
+cd oxt
+./build_oxt.sh        # produces libre_calc_ai-<version>.oxt
+```
 
-You can also install ArasAI as a native LibreOffice extension:
+Then in LibreOffice: **Tools → Extension Manager → Add…** and select the `.oxt` file. Restart LibreOffice. The assistant appears as a Calc sidebar button.
 
-1. Build the extension: `cd oxt && bash build_oxt.sh`
-2. Install the generated `.oxt` file via **Tools > Extension Manager** in LibreOffice
-3. Restart LibreOffice
-4. Open Calc and use the **AI Assistant** menu
-5. If PyQt5/httpx/python-dotenv are missing, the extension offers automatic installation
+---
 
-### Settings
+## Configuration
 
-Access **File > Settings** to configure:
+All settings persist to `~/.config/libre_calc_ai/settings.json` and can be edited from the in-app **Settings** dialog.
 
-| Tab | Options |
-|-----|---------|
-| **AI (LLM)** | Provider selection, API keys, model selection, Ollama URL |
-| **LibreOffice** | Connection host and port |
-| **General** | Theme (Light/Dark/System), Language (TR/EN/System) |
+| Key | Description | Default |
+|---|---|---|
+| `llm_provider` | Active provider (`openrouter`, `ollama`, `gemini`, `groq`, `nvidia`) | `openrouter` |
+| `openrouter_api_key` | OpenRouter key | _(empty)_ |
+| `openrouter_default_model` | Default OpenRouter model | `google/gemini-2.5-flash` |
+| `nvidia_api_key` | NVIDIA NIM key | _(empty)_ |
+| `nvidia_default_model` | Default NVIDIA model | `nvidia/llama-3.3-nemotron-super-49b-v1` |
+| `gemini_api_key` | Google Gemini key | _(empty)_ |
+| `gemini_default_model` | Default Gemini model | `gemini-2.5-flash` |
+| `groq_api_key` | Groq key | _(empty)_ |
+| `groq_default_model` | Default Groq model | `llama-3.3-70b-versatile` |
+| `ollama_base_url` | Ollama server URL | `http://localhost:11434` |
+| `ollama_default_model` | Default Ollama model | `gemma4:31b-cloud` |
+| `llm_temperature` | Sampling temperature | `0.1` |
+| `llm_max_tokens` | Output token cap | `8192` |
+| `libreoffice_host` / `libreoffice_port` | UNO socket | `localhost` / `2002` |
+| `ui_theme` | `light`, `dark`, `system` | `light` |
+| `ui_language` | `en`, `tr`, `system` | `en` |
 
-### Ollama Setup
+API keys can also be supplied via `.env` (see `.env.example`) for headless / CI runs. UI-entered keys override `.env`.
 
-1. Install Ollama: `curl -fsSL https://ollama.com/install.sh | sh`
-2. Pull a model: `ollama pull llama3.2`
-3. In Settings, select "Ollama (Local)" and click "Fetch Models"
+---
 
-#### Tool-Supported Models
+## Usage
 
-For full functionality (cell editing, formula writing), use models with tool/function calling support:
+Open a Calc workbook and the assistant sidebar, then try prompts like:
 
-| Model | Tool Support |
-|-------|-------------|
-| `llama3.1`, `llama3.2`, `llama3.3` | ✅ Yes |
-| `qwen2.5`, `qwen2` | ✅ Yes |
-| `mistral` | ✅ Yes |
-| `command-r` | ✅ Yes |
-| `gemma3`, `phi3` | ❌ No (chat only) |
+- _"Sum column C and put the result in C100."_
+- _"Format A1:D1 as a header row — bold, white text, dark blue background, centered."_
+- _"Find every #DIV/0! error in the sheet and explain the cause."_
+- _"Sort the table by Revenue descending."_
+- _"Create a column chart of A1:B12 titled 'Q4 Sales' at F2."_
+- _"What does cell H22 depend on?"_
+- _"Add a drop-down to E2:E50 with values: Low, Medium, High."_
+- _"Insert 3 empty rows above row 5."_
 
-> Models without tool support will show a warning in Settings and can only be used for chat conversations.
+The model may chain multiple tool calls in one turn — e.g. write headers, fill values, apply styles, then reply with a summary.
 
-### Example Capabilities
-
-*   **Design**: "Create a monthly budget table with bold headers, blue background, and borders."
-*   **Merge Cells**: "Merge cells A1:D1 and center the title."
-*   **Formulas**: "Write a formula in C1 to sum A1 and B1."
-*   **Analysis**: "What does the formula in D5 do? Explain it simply."
-*   **Errors**: "Why is there a #DIV/0! error in column E?"
+---
 
 ## Testing
 
-For LibreOffice integration regression checks, use the smoke tests in `tests/`:
+### Live LibreOffice smoke test
+Connects to a running LibreOffice on `127.0.0.1:2002` and exercises 23 core operations end to end.
 
-1. Start isolated headless LibreOffice, run full test suite, then close it:
+```powershell
+# Windows
+.\tests\run_smoke_against_running_lo.ps1 -LoHost 127.0.0.1 -Port 2002
+```
 
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File tests\run_lo_smoke.ps1
-   ```
+### Full provider × tool matrix
+Spins up a clean sheet for each provider, runs an LLM-driven scenario, and directly dispatches every remaining tool. Verifies `chat_completion`, `stream_completion`, `get_available_models`, and the full tool surface against real LibreOffice.
 
-2. Run the same tests against an already-running LibreOffice listener (default `127.0.0.1:2002`):
+```powershell
+$env:LO_TEST_HOST="127.0.0.1"; $env:LO_TEST_PORT="2002"
+& "C:\Program Files\LibreOffice\program\python.exe" tests\full_provider_e2e.py
+```
 
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File tests\run_smoke_against_running_lo.ps1 -LoHost 127.0.0.1 -Port 2002
-   ```
+Latest run (NVIDIA + OpenRouter + Ollama with default models):
 
-3. Stability loop (run smoke test multiple times):
+| Provider | list_models | streaming | chat | LLM scenario | Direct tool coverage |
+|---|---|---|---|---|---|
+| NVIDIA `nemotron-super-49b` | ✅ | ✅ | ✅ | 14/14 | 22/23 |
+| OpenRouter `gemini-2.5-flash` | ✅ | ✅ | ✅ | 8/8 | 22/23 |
+| Ollama `gemma4:31b-cloud` | ✅ | ✅ | ✅ | 14/14 | 22/23 |
 
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File tests\run_lo_smoke_loop.ps1 -Count 3
-   ```
+The single coverage miss is `create_chart` when called with a single-column range and `has_header=true`; the schema now documents the ≥2-column requirement, and the production smoke test validates `create_chart` with proper inputs.
 
-Latest local validation: `23/23 PASS`.
+---
 
-## 🔧 Architecture
+## Project Layout
 
 ```
 libre_calc_ai_addon/
-├── main.py              # Application entry point
-├── launch.sh            # Smart launcher script
-├── config/
-│   └── settings.py      # Configuration management
+├── main.py                     # Standalone PyQt5 entry point
+├── config/settings.py          # Singleton settings, schema versioning
 ├── core/
-│   ├── cell_manipulator.py   # UNO cell operations
-│   └── event_listener.py     # Selection tracking
+│   ├── uno_bridge.py           # LibreOffice socket / PyUNO bridge
+│   ├── cell_inspector.py       # Reads
+│   ├── cell_manipulator.py     # Writes / formatting / layout / charts
+│   ├── sheet_analyzer.py       # Sheet-wide analysis
+│   ├── error_detector.py       # #DIV/0! etc. with explanations
+│   ├── address_utils.py        # A1 ↔ row/col helpers
+│   └── event_listener.py       # Selection tracking
 ├── llm/
-│   ├── base_provider.py      # Abstract LLM interface
+│   ├── base_provider.py        # Abstract LLMProvider
 │   ├── openrouter_provider.py
-│   ├── ollama_provider.py    # Local Ollama support
-│   ├── tool_definitions.py   # Function calling schemas
-│   └── prompt_templates.py
-├── oxt/
-│   ├── interface.py          # LibreOffice Script Provider bridge
-│   └── CalcAI/              # Bundled application for OXT
-└── ui/
-    ├── main_window.py        # Main application window
-    ├── chat_widget.py        # Chat interface
-    ├── settings_dialog.py    # Settings UI
-    ├── help_dialog.py        # Help & user guide dialog
-    ├── styles.py             # Theme definitions
-    └── i18n.py               # Translations (TR/EN)
+│   ├── nvidia_provider.py
+│   ├── gemini_provider.py
+│   ├── groq_provider.py
+│   ├── ollama_provider.py
+│   ├── prompt_templates.py
+│   └── tool_definitions.py     # 28 tools + ToolDispatcher
+├── ui/                         # PyQt5 sidebar, settings, themes, i18n
+├── oxt/                        # OXT extension package
+│   ├── description.xml
+│   ├── Addons.xcu
+│   ├── CalcAI/                 # Extension entry points
+│   └── build_oxt.sh
+├── tests/
+│   ├── libreoffice_smoke_test.py
+│   ├── full_provider_e2e.py    # Provider × tool matrix
+│   └── run_smoke_against_running_lo.ps1
+├── requirements.txt
+├── .env.example
+└── README.md
 ```
 
-## 🤝 Contributing
+---
 
-Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+## Troubleshooting
 
-## 👤 Developer
+**`Couldn't connect to LibreOffice` on startup.**
+LibreOffice must be running with `--accept="socket,host=...,port=2002;urp;"`. The standalone app does not start LibreOffice for you.
 
-*   **GitHub**: [github.com/palamut62](https://github.com/palamut62)
-*   **X (Twitter)**: [x.com/palamut62](https://x.com/palamut62)
+**Ollama answers "model not found".**
+Run `ollama list` to see what's pulled, then either `ollama pull <model>` or pick an installed one in Settings.
 
-## 📄 License
+**OpenRouter says model `X` is unavailable.**
+Some OpenRouter models are gated, paid-only, or temporarily down. Pick another from the model dropdown in Settings; tool-calling-capable models are recommended.
 
-[MIT](https://choosealicense.com/licenses/mit/)
+**Tool calls succeed but cells stay empty.**
+Check that the active sheet at the time of the call is the one the AI thinks it is. Use `list_sheets` / `switch_sheet` in your prompt, or ask the AI to confirm the current sheet first.
+
+**Add-on icon missing after install.**
+Restart LibreOffice fully (close *all* windows including the Quickstarter tray icon).
+
+---
+
+## Roadmap
+
+- [ ] Pivot table tool
+- [ ] Image-aware prompts (paste a screenshot of a sheet, get back a plan)
+- [ ] Per-workbook memory (named ranges, business glossary)
+- [ ] Macro recording → reusable AI playbooks
+- [ ] More provider adapters (Anthropic native, Azure OpenAI, OpenAI native)
+
+---
+
+## Contributing
+
+Pull requests welcome. Please:
+1. Run the smoke + full provider tests against a live LibreOffice before opening a PR.
+2. Keep tool schemas and dispatcher handlers in lock-step (parameter names must match).
+3. Add a row to the test matrix for any new provider or tool.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).

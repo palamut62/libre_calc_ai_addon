@@ -25,3 +25,10 @@ Thumbs.db
 
 # Project specific
 output/
+
+# Build artifacts
+oxt/build/
+oxt/*.oxt
+tests/full_provider_e2e_output.txt
+tests/smoke_running_lo_output.json
+test_complex.py

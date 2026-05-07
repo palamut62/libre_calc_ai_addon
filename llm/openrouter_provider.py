@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import time
+from datetime import datetime, timezone
 from typing import Generator
 
 import httpx
@@ -102,32 +103,90 @@ class OpenRouterProvider(BaseLLMProvider):
                 return True
         return False
 
-    def _parse_retry_delay(self, response_text: str) -> float:
-        """Hata mesajından retry süresini çıkarır."""
-        match = re.search(r"retry.{0,10}([\d.]+)\s*s", response_text, re.IGNORECASE)
+    def _parse_retry_delay(self, response: httpx.Response) -> float:
+        """429 için bekleme süresini header/body'den çıkarır."""
+        # 1) Standart Retry-After header (saniye veya HTTP-date)
+        retry_after = response.headers.get("Retry-After")
+        if retry_after:
+            try:
+                return max(1.0, float(retry_after))
+            except ValueError:
+                try:
+                    target = datetime.strptime(
+                        retry_after, "%a, %d %b %Y %H:%M:%S GMT"
+                    ).replace(tzinfo=timezone.utc)
+                    now = datetime.now(timezone.utc)
+                    return max(1.0, (target - now).total_seconds())
+                except ValueError:
+                    pass
+
+        # 2) Bazı servisler reset bilgisini header'da verir
+        for key in ("x-ratelimit-reset", "x-rate-limit-reset"):
+            reset = response.headers.get(key)
+            if not reset:
+                continue
+            try:
+                # Çoğu servis burada epoch second döndürür
+                ts = float(reset)
+                now_ts = time.time()
+                if ts > now_ts:
+                    return max(1.0, ts - now_ts)
+                if ts > 0:
+                    # Bazı servisler "kaç saniye kaldı" olarak döndürür
+                    return max(1.0, ts)
+            except ValueError:
+                continue
+
+        # 3) Response body içinde "retry in Xs" kalıbı
+        body_text = response.text or ""
+        match = re.search(r"retry.{0,20}?([\d.]+)\s*s", body_text, re.IGNORECASE)
         if match:
-            return float(match.group(1))
-        return DEFAULT_RETRY_DELAY
+            try:
+                return max(1.0, float(match.group(1)))
+            except ValueError:
+                pass
+
+        return float(DEFAULT_RETRY_DELAY)
 
     def _handle_error_response(self, response: httpx.Response, raise_on_429: bool = True) -> None:
         """HTTP hata yanıtlarını uygun istisna mesajlarıyla yükseltir."""
         status = response.status_code
+        detail = response.text
+        provider_hint = ""
         try:
             body = response.json()
-            detail = body.get("error", {}).get("message", response.text)
+            err = body.get("error", {}) if isinstance(body, dict) else {}
+            detail = err.get("message", response.text)
+            code = err.get("code")
+            meta = err.get("metadata") if isinstance(err.get("metadata"), dict) else {}
+
+            provider_parts = []
+            if code:
+                provider_parts.append(f"code={code}")
+            # Common metadata fields seen in routed providers
+            for k in ("provider_name", "raw", "reason", "model"):
+                v = meta.get(k)
+                if v:
+                    provider_parts.append(f"{k}={v}")
+            if provider_parts:
+                provider_hint = " (" + "; ".join(provider_parts) + ")"
         except (json.JSONDecodeError, ValueError):
-            detail = response.text
+            pass
 
         if status == 401:
             raise PermissionError(f"OpenRouter kimlik doğrulama hatası: {detail}")
         elif status == 429:
             if raise_on_429:
-                raise RuntimeError(f"OpenRouter istek limiti aşıldı: {detail}")
+                retry_after = response.headers.get("Retry-After") or response.headers.get("x-ratelimit-reset")
+                retry_hint = f" | retry={retry_after}" if retry_after else ""
+                raise RuntimeError(
+                    f"OpenRouter istek limiti aşıldı: {detail}{provider_hint}{retry_hint}"
+                )
             return  # Rate limit için retry mekanizması tarafından işlenecek
         elif status >= 500:
-            raise ConnectionError(f"OpenRouter sunucu hatası ({status}): {detail}")
+            raise ConnectionError(f"OpenRouter sunucu hatası ({status}): {detail}{provider_hint}")
         else:
-            raise RuntimeError(f"OpenRouter API hatası ({status}): {detail}")
+            raise RuntimeError(f"OpenRouter API hatası ({status}): {detail}{provider_hint}")
 
     def _parse_response(self, data: dict) -> dict:
         """API yanıtını standart formata dönüştürür."""
@@ -183,7 +242,7 @@ class OpenRouterProvider(BaseLLMProvider):
         if response.status_code == 429:
             if retry_count >= MAX_RETRIES:
                 self._handle_error_response(response)
-            retry_delay = self._parse_retry_delay(response.text)
+            retry_delay = self._parse_retry_delay(response)
             logger.warning(
                 "OpenRouter rate limit aşıldı. %d saniye sonra tekrar denenecek (deneme %d/%d)",
                 int(retry_delay), retry_count + 1, MAX_RETRIES
@@ -213,45 +272,61 @@ class OpenRouterProvider(BaseLLMProvider):
 
         payload = self._build_payload(messages, tools, stream=True)
 
-        try:
-            with self._client.stream(
-                "POST",
-                f"{self._base_url}/chat/completions",
-                headers=self._headers(),
-                json=payload,
-            ) as response:
-                if response.status_code != 200:
-                    response.read()
-                    self._handle_error_response(response)
-
-                for line in response.iter_lines():
-                    if not line or not line.startswith("data: "):
+        retry_count = 0
+        while True:
+            try:
+                with self._client.stream(
+                    "POST",
+                    f"{self._base_url}/chat/completions",
+                    headers=self._headers(),
+                    json=payload,
+                ) as response:
+                    if response.status_code == 429:
+                        response.read()
+                        if retry_count >= MAX_RETRIES:
+                            self._handle_error_response(response)
+                        retry_delay = self._parse_retry_delay(response)
+                        logger.warning(
+                            "OpenRouter stream rate limit aşıldı. %d saniye sonra tekrar denenecek (deneme %d/%d)",
+                            int(retry_delay), retry_count + 1, MAX_RETRIES
+                        )
+                        time.sleep(retry_delay)
+                        retry_count += 1
                         continue
 
-                    data_str = line[len("data: "):]
+                    if response.status_code != 200:
+                        response.read()
+                        self._handle_error_response(response)
 
-                    if data_str.strip() == "[DONE]":
-                        yield {"content": None, "tool_calls": None, "done": True}
-                        return
+                    for line in response.iter_lines():
+                        if not line or not line.startswith("data: "):
+                            continue
 
-                    try:
-                        data = json.loads(data_str)
-                    except json.JSONDecodeError:
-                        logger.warning("SSE JSON ayrıştırma hatası: %s", data_str)
-                        continue
+                        data_str = line[len("data: "):]
 
-                    choice = data.get("choices", [{}])[0]
-                    delta = choice.get("delta", {})
-                    yield {
-                        "content": delta.get("content"),
-                        "tool_calls": delta.get("tool_calls"),
-                        "done": choice.get("finish_reason") is not None,
-                    }
+                        if data_str.strip() == "[DONE]":
+                            yield {"content": None, "tool_calls": None, "done": True}
+                            return
 
-        except httpx.ConnectError as exc:
-            raise ConnectionError(f"OpenRouter'a bağlanılamadı: {exc}") from exc
-        except httpx.TimeoutException as exc:
-            raise ConnectionError(f"OpenRouter isteği zaman aşımına uğradı: {exc}") from exc
+                        try:
+                            data = json.loads(data_str)
+                        except json.JSONDecodeError:
+                            logger.warning("SSE JSON ayrıştırma hatası: %s", data_str)
+                            continue
+
+                        choice = data.get("choices", [{}])[0]
+                        delta = choice.get("delta", {})
+                        yield {
+                            "content": delta.get("content"),
+                            "tool_calls": delta.get("tool_calls"),
+                            "done": choice.get("finish_reason") is not None,
+                        }
+                    return
+
+            except httpx.ConnectError as exc:
+                raise ConnectionError(f"OpenRouter'a bağlanılamadı: {exc}") from exc
+            except httpx.TimeoutException as exc:
+                raise ConnectionError(f"OpenRouter isteği zaman aşımına uğradı: {exc}") from exc
 
     def get_available_models(self) -> list[str]:
         """OpenRouter'daki kullanılabilir modellerin listesini döndürür."""

@@ -42,8 +42,25 @@ class GroqProvider(BaseLLMProvider):
         }
         if tools:
             payload["tools"] = tools
-            payload["tool_choice"] = "auto"
+            # İlk turda tool kullanmayı zorla, sonraki turlarda auto'ya dön
+            force_tool = not self._has_tool_response_after_last_user(messages)
+            payload["tool_choice"] = "required" if force_tool else "auto"
         return payload
+
+    @staticmethod
+    def _has_tool_response_after_last_user(messages: list[dict]) -> bool:
+        """Son kullanıcı mesajından sonra tool sonucu var mı?"""
+        last_user_index = -1
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") == "user":
+                last_user_index = i
+                break
+        if last_user_index == -1:
+            return False
+        for msg in messages[last_user_index + 1:]:
+            if msg.get("role") == "tool":
+                return True
+        return False
 
     def _handle_error_response(self, response: httpx.Response) -> None:
         status = response.status_code
